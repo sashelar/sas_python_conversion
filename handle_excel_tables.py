@@ -86,16 +86,9 @@ df_unpivot = df.select(
 )
 
 # ====================================================
-# STEP 6: Filter out rows where value is empty
+# STEP 6: View unpivoted data
 # ====================================================
-# Remove rows where value is empty, null, or just whitespace
-df_unpivot = df_unpivot.filter(
-    (col("value").isNotNull()) & 
-    (col("value").trim() != "") &
-    (col("value") != " ")
-)
-
-print("Final unpivoted data (blanks removed):")
+print("Final unpivoted data:")
 df_unpivot.show(50, truncate=False)
 
 # ====================================================
