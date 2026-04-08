@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, col, when, explode, array, struct, coalesce
+from pyspark.sql.functions import lit, col, explode, array, struct, coalesce
 from pyspark.sql.types import StringType
 
 spark = SparkSession.builder.getOrCreate()
@@ -19,61 +19,83 @@ df = spark.read.format("com.crealytics.spark.excel") \
     .option("dataAddress", f"'{sheet_name}'!A1") \
     .load(file_path)
 
-print("Original DataFrame:")
-df.show(10, truncate=False)
+print("=" * 80)
+print("STEP 1: ORIGINAL DATA FROM EXCEL")
+print("=" * 80)
+print(f"Total rows: {df.count()}")
 print(f"Columns: {df.columns}")
+df.show(20, truncate=False)
 
 # ====================================================
-# STEP 1: Get the first column name (will be row_id)
+# STEP 2: Rename first column as row_id
 # ====================================================
 first_col = df.columns[0]
-print(f"First column (row_id): {first_col}")
-
-# Rename first column to row_id
+print(f"\nFirst column name: '{first_col}' -> will be renamed to 'row_id'")
 df = df.withColumnRenamed(first_col, "row_id")
 
 # ====================================================
-# STEP 2: Add report_id column (worksheet name)
+# STEP 3: Add report_id column
 # ====================================================
 df = df.withColumn("report_id", lit(sheet_name))
 
-# ====================================================
-# STEP 3: Filter out header rows and empty rows
-# ====================================================
-# Remove rows where row_id is null or empty or contains descriptive text
-df = df.filter(
-    (col("row_id").isNotNull()) & 
-    (col("row_id") != "") & 
-    (col("row_id").like("R%"))  # Keep only rows starting with R (R0010, R0020, etc.)
-)
-
-print("After filtering:")
-df.show(10, truncate=False)
+print("\n" + "=" * 80)
+print("STEP 2: AFTER ADDING report_id")
+print("=" * 80)
+print(f"Total rows: {df.count()}")
+print(f"Columns: {df.columns}")
+df.show(20, truncate=False)
 
 # ====================================================
-# STEP 4: Cast all value columns to String and replace NULLs with empty space
+# STEP 4: Filter rows starting with R
+# ====================================================
+df_before_filter = df.count()
+df = df.filter(col("row_id").like("R%"))
+df_after_filter = df.count()
+
+print("\n" + "=" * 80)
+print(f"STEP 3: FILTER ROWS (kept R* rows only)")
+print("=" * 80)
+print(f"Rows before filter: {df_before_filter}")
+print(f"Rows after filter: {df_after_filter}")
+df.show(20, truncate=False)
+
+# ====================================================
+# STEP 5: Get value columns
 # ====================================================
 value_columns = [c for c in df.columns if c not in ["report_id", "row_id"]]
+print(f"\nValue columns to unpivot: {value_columns}")
 
+# ====================================================
+# STEP 6: Cast to String and handle nulls
+# ====================================================
 for c in value_columns:
     df = df.withColumn(
         c,
         coalesce(col(c).cast(StringType()), lit(" "))
     )
 
-print("After null replacement:")
-df.show(10, truncate=False)
+print("\n" + "=" * 80)
+print("STEP 4: AFTER CASTING TO STRING")
+print("=" * 80)
+print(f"Total rows: {df.count()}")
+df.show(20, truncate=False)
 
 # ====================================================
-# STEP 5: Unpivot using explode + array of structs
+# STEP 7: UNPIVOT - THE CRITICAL PART
 # ====================================================
-# Create array of structs: each struct contains column_id (C0020, C0030, etc.) and its value
+print("\n" + "=" * 80)
+print("STEP 5: UNPIVOTING...")
+print("=" * 80)
+
+# Create struct for each column
 struct_cols = [
     struct(lit(c).alias("column_id"), col(c).alias("value")) 
     for c in value_columns
 ]
 
-# Select report_id, row_id, and explode the array of column structs
+print(f"Creating array with {len(struct_cols)} columns...")
+
+# Explode
 df_unpivot = df.select(
     "report_id",
     "row_id",
@@ -85,31 +107,31 @@ df_unpivot = df.select(
     col("data.value")
 )
 
-# ====================================================
-# STEP 6: View unpivoted data
-# ====================================================
-print("Final unpivoted data:")
-df_unpivot.show(50, truncate=False)
+print(f"Total rows after unpivot: {df_unpivot.count()}")
+
+print("\n" + "=" * 80)
+print("FINAL RESULT")
+print("=" * 80)
+df_unpivot.show(100, truncate=False)
+
+# Count
+total = df_unpivot.count()
+print(f"\n✓ Total unpivoted rows: {total}")
 
 # ====================================================
-# STEP 7: Write to Azure
+# Optional: Write to Azure
 # ====================================================
 output_path = "abfss://<container>@<storage>.dfs.core.windows.net/<output_path>/unpivoted_data"
-
-# Parquet format (recommended for performance)
-df_unpivot.write.mode("overwrite").parquet(output_path)
-print(f"✓ Data written to Parquet: {output_path}")
-
-# Also save as CSV if needed for Excel export
 output_csv = "abfss://<container>@<storage>.dfs.core.windows.net/<output_path>/unpivoted_data.csv"
-df_unpivot.coalesce(1).write.mode("overwrite").option("header", "true").csv(output_csv)
-print(f"✓ Data written to CSV: {output_csv}")
 
-# ====================================================
-# OPTIONAL: Preview what will be exported to Excel
-# ====================================================
-print("\nFinal output (first 30 rows):")
-df_unpivot.select("report_id", "row_id", "column_id", "value").show(30, truncate=False)
+try:
+    df_unpivot.write.mode("overwrite").parquet(output_path)
+    print(f"✓ Parquet written: {output_path}")
+except Exception as e:
+    print(f"✗ Parquet write failed: {e}")
 
-# Count total rows
-print(f"Total rows in unpivoted data: {df_unpivot.count()}")
+try:
+    df_unpivot.coalesce(1).write.mode("overwrite").option("header", "true").csv(output_csv)
+    print(f"✓ CSV written: {output_csv}")
+except Exception as e:
+    print(f"✗ CSV write failed: {e}")
