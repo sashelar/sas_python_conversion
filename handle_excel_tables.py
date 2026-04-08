@@ -46,14 +46,17 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 4: Filter rows starting with R
+# STEP 4: Filter out header/empty rows (optional - remove if needed)
 # ====================================================
 df_before_filter = df.count()
-df = df.filter(col("row_id").like("R%"))
+
+# Remove rows where row_id is completely empty
+df = df.filter(col("row_id").isNotNull() & (col("row_id") != ""))
+
 df_after_filter = df.count()
 
 print("\n" + "=" * 80)
-print(f"STEP 3: FILTER ROWS (kept R* rows only)")
+print(f"STEP 3: FILTER ROWS (removed null/empty row_ids)")
 print("=" * 80)
 print(f"Rows before filter: {df_before_filter}")
 print(f"Rows after filter: {df_after_filter}")
