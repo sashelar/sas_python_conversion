@@ -27,47 +27,48 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 2: Find and extract column IDs from data row
+# STEP 2: Find C-codes from row just above R-codes
 # ====================================================
-from pyspark.sql.functions import regexp_extract, when, row_number
-from pyspark.window import Window
+from pyspark.sql.functions import regexp_extract, when
 
-# The column IDs (C0020, C0030, etc.) are in a data row, not the header
-# Find the row containing C-codes
-df_with_rn = df.withColumn("rn", row_number().over(Window.orderBy(lit(1))))
+# Collect all rows
+all_rows = df.collect()
+column_id_mapping = {}
+c_code_row_index = None
+first_r_code_row_index = None
 
-# Find first row that contains C-codes
-c_code_row = None
-for row in df.collect():
-    row_str = str(row)
-    if "C0020" in row_str or "C0030" in row_str or "C0040" in row_str or "C0050" in row_str:
-        c_code_row = row
+print("Finding R-code rows and C-code row location...")
+
+# First pass: find where R-codes start
+for idx, row in enumerate(all_rows):
+    second_col_value = str(row[1]) if row[1] else ""
+    if "R0" in second_col_value or second_col_value.startswith("R"):
+        first_r_code_row_index = idx
+        print(f"First R-code row found at index {idx}: {second_col_value}")
         break
 
-print(f"Column header row found: {c_code_row}")
-
-# Extract column positions and their C-codes from that row
-column_id_mapping = {}
-if c_code_row:
-    for i, col_name in enumerate(df.columns):
-        col_value = c_code_row[i]
-        if col_value and "C00" in str(col_value):
-            column_id_mapping[col_name] = str(col_value).strip()
-            print(f"  Column {i} ({col_name}) = {col_value}")
+# C-codes are in the row just before R-codes start
+if first_r_code_row_index and first_r_code_row_index > 0:
+    c_code_row_index = first_r_code_row_index - 1
+    c_code_row = all_rows[c_code_row_index]
+    print(f"C-code row at index {c_code_row_index}")
+    
+    # Extract C-codes from that specific row
+    for col_idx, col_name in enumerate(df.columns):
+        cell_value = str(c_code_row[col_idx]).strip() if c_code_row[col_idx] else ""
+        if cell_value:
+            column_id_mapping[col_name] = cell_value
+            print(f"  Column {col_idx} ({col_name}): {cell_value}")
 
 print(f"Column ID mapping: {column_id_mapping}")
 
 # ====================================================
 # STEP 3: Extract row_id (R0010, R0020, etc.) from 2nd column
 # ====================================================
-from pyspark.sql.functions import regexp_extract, when
-
-# The row IDs are in the 2nd column (R0010, R0020, etc.)
 second_col = df.columns[1]
+print(f"\nExtracting row_id from 2nd column: '{second_col}'")
 
-print(f"Extracting row_id from 2nd column: '{second_col}'")
-
-# Create row_id from 2nd column (clean up any extra text)
+# Create row_id from 2nd column
 df = df.withColumn(
     "row_id",
     when(col(second_col).isNotNull(),
@@ -88,21 +89,29 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 4: Filter out header/empty rows and column header row
+# STEP 4: Remove the C-code row (just the one row)
 # ====================================================
 df_before_filter = df.count()
 
-# Remove rows where row_id is empty AND there are no R-codes
-# This removes the column header row (C0020, C0030, etc.)
-df = df.filter(
-    (col("row_id").isNotNull()) & 
-    (col("row_id") != "")
-)
+# Add row index to identify which row is the C-code row
+from pyspark.sql.functions import monotonically_increasing_id
+
+df = df.withColumn("_row_index", monotonically_increasing_id())
+
+# Remove only the C-code row
+if c_code_row_index is not None:
+    df = df.filter(~(col("_row_index") == c_code_row_index))
+
+# Also remove empty rows
+df = df.filter(col("row_id").isNotNull() & (col("row_id") != ""))
+
+# Drop the temporary row index column
+df = df.drop("_row_index")
 
 df_after_filter = df.count()
 
 print("\n" + "=" * 80)
-print(f"STEP 4: FILTER ROWS (removed empty row_ids and column header row)")
+print(f"STEP 4: REMOVE C-CODE ROW (index {c_code_row_index})")
 print("=" * 80)
 print(f"Rows before filter: {df_before_filter}")
 print(f"Rows after filter: {df_after_filter}")
