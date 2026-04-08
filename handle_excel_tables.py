@@ -27,11 +27,22 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 2: Rename first column as row_id
+# STEP 2: Extract row_id (R0010, R0020, etc.) from 2nd column
 # ====================================================
-first_col = df.columns[0]
-print(f"\nFirst column name: '{first_col}' -> will be renamed to 'row_id'")
-df = df.withColumnRenamed(first_col, "row_id")
+from pyspark.sql.functions import regexp_extract, when
+
+# The row IDs are in the 2nd column (R0010, R0020, etc.)
+second_col = df.columns[1]
+
+print(f"Extracting row_id from 2nd column: '{second_col}'")
+
+# Create row_id from 2nd column (clean up any extra text)
+df = df.withColumn(
+    "row_id",
+    when(col(second_col).isNotNull(),
+         regexp_extract(col(second_col), r'(R\d+)', 1)
+    ).otherwise(col(second_col))
+)
 
 # ====================================================
 # STEP 3: Add report_id column
@@ -65,7 +76,10 @@ df.show(20, truncate=False)
 # ====================================================
 # STEP 5: Get value columns
 # ====================================================
-value_columns = [c for c in df.columns if c not in ["report_id", "row_id"]]
+# Exclude first 2 columns (first_col, second_col) and our new columns
+first_col = df.columns[0]
+second_col = df.columns[1]
+value_columns = [c for c in df.columns if c not in ["report_id", "row_id", first_col, second_col]]
 print(f"\nValue columns to unpivot: {value_columns}")
 
 # ====================================================
