@@ -27,7 +27,38 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 2: Extract row_id (R0010, R0020, etc.) from 2nd column
+# STEP 2: Find and extract column IDs from data row
+# ====================================================
+from pyspark.sql.functions import regexp_extract, when, row_number
+from pyspark.window import Window
+
+# The column IDs (C0020, C0030, etc.) are in a data row, not the header
+# Find the row containing C-codes
+df_with_rn = df.withColumn("rn", row_number().over(Window.orderBy(lit(1))))
+
+# Find first row that contains C-codes
+c_code_row = None
+for row in df.collect():
+    row_str = str(row)
+    if "C0020" in row_str or "C0030" in row_str or "C0040" in row_str or "C0050" in row_str:
+        c_code_row = row
+        break
+
+print(f"Column header row found: {c_code_row}")
+
+# Extract column positions and their C-codes from that row
+column_id_mapping = {}
+if c_code_row:
+    for i, col_name in enumerate(df.columns):
+        col_value = c_code_row[i]
+        if col_value and "C00" in str(col_value):
+            column_id_mapping[col_name] = str(col_value).strip()
+            print(f"  Column {i} ({col_name}) = {col_value}")
+
+print(f"Column ID mapping: {column_id_mapping}")
+
+# ====================================================
+# STEP 3: Extract row_id (R0010, R0020, etc.) from 2nd column
 # ====================================================
 from pyspark.sql.functions import regexp_extract, when
 
@@ -57,44 +88,36 @@ print(f"Columns: {df.columns}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 4: Filter out header/empty rows (optional - remove if needed)
+# STEP 4: Filter out header/empty rows and column header row
 # ====================================================
 df_before_filter = df.count()
 
-# Remove rows where row_id is completely empty
-df = df.filter(col("row_id").isNotNull() & (col("row_id") != ""))
+# Remove rows where row_id is empty AND there are no R-codes
+# This removes the column header row (C0020, C0030, etc.)
+df = df.filter(
+    (col("row_id").isNotNull()) & 
+    (col("row_id") != "")
+)
 
 df_after_filter = df.count()
 
 print("\n" + "=" * 80)
-print(f"STEP 3: FILTER ROWS (removed null/empty row_ids)")
+print(f"STEP 4: FILTER ROWS (removed empty row_ids and column header row)")
 print("=" * 80)
 print(f"Rows before filter: {df_before_filter}")
 print(f"Rows after filter: {df_after_filter}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 5: Get value columns and map to proper column_ids
+# STEP 5: Get value columns
 # ====================================================
-# Exclude first 2 columns (first_col, second_col) and our new columns
+# Exclude first 2 columns and our new columns
 first_col = df.columns[0]
 second_col = df.columns[1]
 value_columns = [c for c in df.columns if c not in ["report_id", "row_id", first_col, second_col]]
 
-# Extract C-codes from column headers (C0020, C0030, etc.)
-import re
-column_id_mapping = {}
-for col_name in value_columns:
-    # Try to extract C-code from column name (e.g., "C0020" or "Medical ex C0020")
-    match = re.search(r'(C\d+)', col_name)
-    if match:
-        column_id_mapping[col_name] = match.group(1)
-    else:
-        # If no C-code found in header, use the column name as is
-        column_id_mapping[col_name] = col_name
-
 print(f"\nValue columns to unpivot: {value_columns}")
-print(f"Column ID mapping: {column_id_mapping}")
+print(f"Using column ID mapping from data row: {column_id_mapping}")
 
 # ====================================================
 # STEP 6: Cast to String and handle nulls
