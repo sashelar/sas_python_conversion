@@ -74,13 +74,27 @@ print(f"Rows after filter: {df_after_filter}")
 df.show(20, truncate=False)
 
 # ====================================================
-# STEP 5: Get value columns
+# STEP 5: Get value columns and map to proper column_ids
 # ====================================================
 # Exclude first 2 columns (first_col, second_col) and our new columns
 first_col = df.columns[0]
 second_col = df.columns[1]
 value_columns = [c for c in df.columns if c not in ["report_id", "row_id", first_col, second_col]]
+
+# Extract C-codes from column headers (C0020, C0030, etc.)
+import re
+column_id_mapping = {}
+for col_name in value_columns:
+    # Try to extract C-code from column name (e.g., "C0020" or "Medical ex C0020")
+    match = re.search(r'(C\d+)', col_name)
+    if match:
+        column_id_mapping[col_name] = match.group(1)
+    else:
+        # If no C-code found in header, use the column name as is
+        column_id_mapping[col_name] = col_name
+
 print(f"\nValue columns to unpivot: {value_columns}")
+print(f"Column ID mapping: {column_id_mapping}")
 
 # ====================================================
 # STEP 6: Cast to String and handle nulls
@@ -104,9 +118,9 @@ print("\n" + "=" * 80)
 print("STEP 5: UNPIVOTING...")
 print("=" * 80)
 
-# Create struct for each column
+# Create struct for each column using the mapped column_ids
 struct_cols = [
-    struct(lit(c).alias("column_id"), col(c).alias("value")) 
+    struct(lit(column_id_mapping[c]).alias("column_id"), col(c).alias("value")) 
     for c in value_columns
 ]
 
