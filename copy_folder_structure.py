@@ -1,70 +1,69 @@
-
 import os
-import shutil
+from pyspark.sql import SparkSession
 
 # Source: Local temp where files are extracted
 local_extract_path = "/tmp/risk_engine_extracted"
 
-# Target: ADLS path (using the format that works with your company framework)
+# Target: ADLS path
 from companyframework.functions import commonfunctions as cf
-
 ref_location = cf.get_base_directory("ref")
 adls_target = f"{ref_location}/Risk_Engine_Programs"
 
 print("="*70)
-print("COPYING FILES TO ADLS")
+print("COPYING FILES TO ADLS USING SPARK")
 print("="*70)
 
 print(f"\n📂 Source: {local_extract_path}")
 print(f"📂 Target: {adls_target}")
 
-# Create target directory
-print(f"\n1️⃣ Creating target directory...")
-os.makedirs(adls_target, exist_ok=True)
-print(f"   ✅ Directory ready")
+# Get all files recursively
+print(f"\n1️⃣ Scanning files...")
 
-# Copy all files and folders
-print(f"\n2️⃣ Copying files...")
+all_files = []
+for root, dirs, files in os.walk(local_extract_path):
+    for file in files:
+        local_file_path = os.path.join(root, file)
+        # Calculate relative path
+        relative_path = os.path.relpath(local_file_path, local_extract_path)
+        all_files.append((local_file_path, relative_path))
 
-try:
-    for item in os.listdir(local_extract_path):
-        source_item = os.path.join(local_extract_path, item)
-        target_item = os.path.join(adls_target, item)
+print(f"   Found {len(all_files)} files to copy")
+
+# Copy each file using Spark
+print(f"\n2️⃣ Copying files to ADLS...")
+
+copied_count = 0
+failed_count = 0
+
+for local_path, relative_path in all_files:
+    try:
+        # Read file as binary
+        with open(local_path, 'rb') as f:
+            file_content = f.read()
         
-        if os.path.isdir(source_item):
-            print(f"   📁 Copying folder: {item}...")
-            shutil.copytree(source_item, target_item, dirs_exist_ok=True)
-        else:
-            print(f"   📄 Copying file: {item}...")
-            shutil.copy2(source_item, target_item)
-    
-    print(f"\n✅ All files copied to ADLS!")
-    
-except Exception as e:
-    print(f"\n❌ Error during copy: {e}")
+        # Target path in ADLS
+        adls_file_path = f"{adls_target}/{relative_path}"
+        
+        # Create parent directory path
+        adls_dir = os.path.dirname(adls_file_path)
+        
+        # Write using Spark
+        # Create a DataFrame with the binary content
+        df = spark.createDataFrame([(adls_file_path, file_content)], ["path", "content"])
+        
+        # Write as binary file
+        df.coalesce(1).write.mode("overwrite").format("binaryFile").save(adls_file_path)
+        
+        copied_count += 1
+        if copied_count % 10 == 0:
+            print(f"   Progress: {copied_count}/{len(all_files)} files...")
+        
+    except Exception as e:
+        print(f"   ❌ Failed: {relative_path} - {e}")
+        failed_count += 1
 
-# Verify files in ADLS
-print(f"\n3️⃣ Verifying files in ADLS...")
-if os.path.exists(adls_target):
-    items = os.listdir(adls_target)
-    print(f"   ✅ Found {len(items)} items in ADLS:")
-    for item in items[:10]:  # Show first 10
-        print(f"      - {item}")
-    if len(items) > 10:
-        print(f"      ... and {len(items) - 10} more")
-else:
-    print(f"   ❌ Target directory not found")
-
-# Cleanup temp files
-print(f"\n4️⃣ Cleaning up temp files...")
-try:
-    shutil.rmtree(local_extract_path)
-    os.remove("/tmp/risk_engine.zip")
-    print(f"   ✅ Cleanup complete")
-except:
-    print(f"   ⚠️  Cleanup had minor issues (non-critical)")
+print(f"\n✅ Copy complete!")
+print(f"   Copied: {copied_count} files")
+print(f"   Failed: {failed_count} files")
 
 print("\n" + "="*70)
-print("✅ COMPLETE!")
-print(f"📂 Your files are now at: {adls_target}")
-print("="*70)
