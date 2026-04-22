@@ -1,0 +1,299 @@
+# ============================================================================
+# INTERACTIVE PARAMETER SETUP WITH PIPELINE TRIGGER
+# ============================================================================
+
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+from datetime import date, datetime
+import requests
+import json
+
+# ============================================================================
+# 1. CREATE INTERACTIVE WIDGETS
+# ============================================================================
+
+print("📝 Set Pipeline Parameters")
+print("=" * 60)
+
+# Date picker for reporting date
+date_picker = widgets.DatePicker(
+    description='Reporting Date:',
+    value=date(2024, 1, 31),
+    disabled=False,
+    style={'description_width': '150px'}
+)
+
+# Environment dropdown
+env_dropdown = widgets.Dropdown(
+    options=['DEV', 'UAT', 'PROD'],
+    value='UAT',
+    description='Environment:',
+    style={'description_width': '150px'}
+)
+
+# Storage account input
+storage_input = widgets.Text(
+    value='mystorageaccount',
+    description='Storage Account:',
+    disabled=False,
+    style={'description_width': '150px'}
+)
+
+# Container input
+container_input = widgets.Text(
+    value='data',
+    description='Container:',
+    disabled=False,
+    style={'description_width': '150px'}
+)
+
+# Base path input
+base_path_input = widgets.Text(
+    value='finance/base',
+    description='Base Path:',
+    disabled=False,
+    style={'description_width': '150px'}
+)
+
+# Context ID input
+context_id_input = widgets.Text(
+    value='CONTEXT_001',
+    description='Context ID:',
+    disabled=False,
+    style={'description_width': '150px'}
+)
+
+# ============================================================================
+# 2. DISPLAY WIDGETS
+# ============================================================================
+
+display(
+    widgets.VBox([
+        widgets.HTML("<h3>Pipeline Configuration</h3>"),
+        date_picker,
+        env_dropdown,
+        storage_input,
+        container_input,
+        base_path_input,
+        context_id_input
+    ])
+)
+
+# ============================================================================
+# 3. CREATE RUN BUTTON WITH PIPELINE TRIGGER
+# ============================================================================
+
+run_button = widgets.Button(
+    description='🚀 Run Pipeline',
+    button_style='success',
+    tooltip='Trigger Synapse Pipeline',
+    layout=widgets.Layout(width='200px', height='40px')
+)
+
+validate_button = widgets.Button(
+    description='✓ Validate Only',
+    button_style='info',
+    tooltip='Validate parameters without running',
+    layout=widgets.Layout(width='200px', height='40px')
+)
+
+output_area = widgets.Output()
+
+# ============================================================================
+# 4. VALIDATION FUNCTION
+# ============================================================================
+
+def validate_parameters():
+    """Validate all parameters before running"""
+    errors = []
+    
+    # Validate date
+    if date_picker.value is None:
+        errors.append("❌ Reporting date is required")
+    
+    # Validate storage account
+    if not storage_input.value or len(storage_input.value) < 3:
+        errors.append("❌ Valid storage account name required")
+    
+    # Validate container
+    if not container_input.value:
+        errors.append("❌ Container name is required")
+    
+    return errors
+
+# ============================================================================
+# 5. VALIDATION BUTTON HANDLER
+# ============================================================================
+
+def on_validate_click(b):
+    with output_area:
+        clear_output()
+        print("🔍 Validating parameters...")
+        print("=" * 60)
+        
+        errors = validate_parameters()
+        
+        if errors:
+            print("\n".join(errors))
+        else:
+            print("✅ All parameters valid!")
+            print("\nParameters to be used:")
+            print(f"  📅 Reporting Date: {date_picker.value}")
+            print(f"  🌍 Environment: {env_dropdown.value}")
+            print(f"  💾 Storage Account: {storage_input.value}")
+            print(f"  📦 Container: {container_input.value}")
+            print(f"  📁 Base Path: {base_path_input.value}")
+            print(f"  🔑 Context ID: {context_id_input.value}")
+            print("\n✓ Ready to run pipeline!")
+
+validate_button.on_click(on_validate_click)
+
+# ============================================================================
+# 6. PIPELINE TRIGGER FUNCTION (OPTION A: Using notebookutils)
+# ============================================================================
+
+def trigger_pipeline_notebookutils(b):
+    """Trigger pipeline using Synapse notebookutils"""
+    with output_area:
+        clear_output()
+        
+        # Validate first
+        errors = validate_parameters()
+        if errors:
+            print("❌ Validation failed:")
+            print("\n".join(errors))
+            return
+        
+        # Prepare parameters
+        pipeline_params = {
+            "THISRUN_REPORTING_DATE": str(date_picker.value),
+            "THISRUN_REPORTING_DATE_NUM": str(date_picker.value).replace("-", ""),
+            "THISRUN_CONTEXT_ID": env_dropdown.value,
+            "ADLS_STORAGE_ACCOUNT": storage_input.value,
+            "ADLS_CONTAINER": container_input.value,
+            "FSPWFY": base_path_input.value,
+            "THISRUN_IN_ROOT_PATH": f"{base_path_input.value}/root",
+            "THISRUN_CURRENT_DATE_NUM": datetime.now().strftime("%Y%m%d")
+        }
+        
+        print("🚀 Triggering Synapse Pipeline...")
+        print("=" * 60)
+        print("\n📋 Parameters:")
+        for key, value in pipeline_params.items():
+            print(f"  {key}: {value}")
+        
+        try:
+            from notebookutils import mssparkutils
+            
+            # Replace 'YourPipelineName' with your actual pipeline name
+            pipeline_name = "YourETLPipeline"
+            
+            # Trigger the pipeline
+            run_id = mssparkutils.notebook.runPipeline(
+                pipeline_name,
+                parameters=pipeline_params
+            )
+            
+            print(f"\n✅ Pipeline triggered successfully!")
+            print(f"📊 Run ID: {run_id}")
+            print(f"\n🔗 Monitor at: Synapse Studio → Monitor → Pipeline runs")
+            
+        except Exception as e:
+            print(f"\n❌ Error triggering pipeline: {str(e)}")
+            print("\n💡 Make sure:")
+            print("  1. Pipeline name is correct")
+            print("  2. You have permissions to run the pipeline")
+            print("  3. Pipeline is published")
+
+# ============================================================================
+# 7. ALTERNATIVE: REST API TRIGGER (OPTION B)
+# ============================================================================
+
+def trigger_pipeline_rest_api(b):
+    """Trigger pipeline using Synapse REST API"""
+    with output_area:
+        clear_output()
+        
+        # Validate first
+        errors = validate_parameters()
+        if errors:
+            print("❌ Validation failed:")
+            print("\n".join(errors))
+            return
+        
+        # Prepare parameters
+        pipeline_params = {
+            "THISRUN_REPORTING_DATE": str(date_picker.value),
+            "THISRUN_REPORTING_DATE_NUM": str(date_picker.value).replace("-", ""),
+            "THISRUN_CONTEXT_ID": env_dropdown.value,
+            "ADLS_STORAGE_ACCOUNT": storage_input.value,
+            "ADLS_CONTAINER": container_input.value,
+            "FSPWFY": base_path_input.value,
+            "THISRUN_IN_ROOT_PATH": f"{base_path_input.value}/root",
+            "THISRUN_CURRENT_DATE_NUM": datetime.now().strftime("%Y%m%d")
+        }
+        
+        print("🚀 Triggering Pipeline via REST API...")
+        print("=" * 60)
+        
+        # Configuration - UPDATE THESE VALUES
+        workspace_name = "your-synapse-workspace"
+        pipeline_name = "YourETLPipeline"
+        subscription_id = "your-subscription-id"
+        resource_group = "your-resource-group"
+        
+        # Get token (using managed identity)
+        try:
+            from notebookutils import mssparkutils
+            token = mssparkutils.credentials.getToken("https://dev.azuresynapse.net")
+            
+            # Build REST API URL
+            url = f"https://{workspace_name}.dev.azuresynapse.net/pipelines/{pipeline_name}/createRun?api-version=2020-12-01"
+            
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            # Make request
+            response = requests.post(url, headers=headers, json=pipeline_params)
+            
+            if response.status_code == 202:
+                result = response.json()
+                run_id = result.get("runId")
+                print(f"\n✅ Pipeline triggered successfully!")
+                print(f"📊 Run ID: {run_id}")
+                print(f"\n📋 Parameters sent:")
+                for key, value in pipeline_params.items():
+                    print(f"  {key}: {value}")
+            else:
+                print(f"\n❌ Failed to trigger pipeline")
+                print(f"Status Code: {response.status_code}")
+                print(f"Response: {response.text}")
+                
+        except Exception as e:
+            print(f"\n❌ Error: {str(e)}")
+
+# ============================================================================
+# 8. CHOOSE YOUR TRIGGER METHOD AND ATTACH TO BUTTON
+# ============================================================================
+
+# Use Option A (simpler, recommended)
+run_button.on_click(trigger_pipeline_notebookutils)
+
+# OR use Option B (more control)
+# run_button.on_click(trigger_pipeline_rest_api)
+
+# ============================================================================
+# 9. DISPLAY BUTTONS
+# ============================================================================
+
+display(
+    widgets.HBox([validate_button, run_button]),
+    output_area
+)
+
+print("\n💡 Instructions:")
+print("  1. Set your parameters above")
+print("  2. Click 'Validate Only' to check parameters")
+print("  3. Click 'Run Pipeline' to trigger the pipeline")
