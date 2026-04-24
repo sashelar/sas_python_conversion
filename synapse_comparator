@@ -277,15 +277,17 @@ class DataFrameComparator:
             F.col("val2").isNotNull()
         ).limit(10).collect()
         
-        mismatch_samples = [
-            {
-                'df1_value': float(row['val1']) if row['val1'] is not None else None,
-                'df2_value': float(row['val2']) if row['val2'] is not None else None,
-                'difference': float(row['difference']) if row['difference'] is not None else None,
-                'is_decimal_change': abs(row['difference']) < 1 if row['difference'] is not None else False
-            }
-            for row in sample_mismatches
-        ]
+
+        mismatch_samples = []
+        for row in sample_mismatches:
+            if row['difference'] is not None:
+                mismatch_samples.append({
+                    'df1_value': float(row['val1']) if row['val1'] is not None else None,
+                    'df2_value': float(row['val2']) if row['val2'] is not None else None,
+                    'difference': float(row['difference']),
+                    'is_decimal_change': abs(float(row['difference'])) < 1
+                })
+
         
         diff_df.unpersist()
         
