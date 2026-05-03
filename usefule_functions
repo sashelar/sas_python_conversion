@@ -1,0 +1,314 @@
+from pyspark.sql import functions as F
+from pyspark.sql.types import *
+import random
+
+def introduce_differences(df, modifications):
+    """
+    Introduce controlled differences in a Spark DataFrame for testing comparison module
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        Original Spark DataFrame
+    modifications : dict
+        Dictionary specifying what changes to make:
+        {
+            'alphanumeric_col': {
+                'type': 'alphanumeric',
+                'change_percent': 10,  # Percent of rows to change
+                'change_type': 'typo'  # 'typo', 'number_change', 'case_change'
+            },
+            'alpha_col': {
+                'type': 'alpha',
+                'change_percent': 15,
+                'change_type': 'typo'  # 'typo', 'swap_chars', 'case_change'
+            },
+            'numeric_col': {
+                'type': 'numeric',
+                'change_percent': 20,
+                'change_type': 'decimal'  # 'decimal', 'small_change', 'large_change'
+            }
+        }
+    
+    Returns:
+    --------
+    DataFrame with introduced differences
+    """
+    
+    modified_df = df
+    
+    for col_name, config in modifications.items():
+        col_type = config['type']
+        change_percent = config.get('change_percent', 10)
+        change_type = config.get('change_type', 'typo')
+        
+        # Calculate probability for random changes
+        change_prob = change_percent / 100.0
+        
+        if col_type == 'alphanumeric':
+            modified_df = _modify_alphanumeric_column(modified_df, col_name, change_prob, change_type)
+        elif col_type == 'alpha':
+            modified_df = _modify_alpha_column(modified_df, col_name, change_prob, change_type)
+        elif col_type == 'numeric':
+            modified_df = _modify_numeric_column(modified_df, col_name, change_prob, change_type)
+    
+    return modified_df
+
+
+def _modify_alphanumeric_column(df, col_name, prob, change_type):
+    """Modify alphanumeric column (e.g., ID123, CUST456)"""
+    
+    if change_type == 'typo':
+        # Change one character in the alpha part
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.concat(
+                    F.substring(F.col(col_name), 1, 2),  # Keep first 2 chars
+                    F.lit('X'),  # Introduce typo
+                    F.substring(F.col(col_name), 4, 100)  # Rest of string
+                )
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'number_change':
+        # Change the numeric part (e.g., ID123 -> ID124)
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.concat(
+                    F.regexp_extract(F.col(col_name), r'([A-Za-z]+)', 1),  # Alpha part
+                    (F.regexp_extract(F.col(col_name), r'(\d+)', 1).cast('int') + 1).cast('string')  # Numeric + 1
+                )
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'case_change':
+        # Change case of alpha part
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.lower(F.col(col_name))  # Convert to lowercase
+            ).otherwise(F.col(col_name))
+        )
+    
+    return df
+
+
+def _modify_alpha_column(df, col_name, prob, change_type):
+    """Modify pure alphabetic column (e.g., names, descriptions)"""
+    
+    if change_type == 'typo':
+        # Replace a character with a similar one
+        typo_map = {
+            'a': 'e', 'e': 'a', 'i': 'y', 'o': 'u', 
+            's': 'z', 't': 'r', 'n': 'm', 'h': 'b'
+        }
+        
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                # Simple approach: replace 'i' with 'y' as example
+                F.regexp_replace(F.col(col_name), 'i', 'y')
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'swap_chars':
+        # Swap two adjacent characters (e.g., "Smith" -> "Smiht")
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.concat(
+                    F.substring(F.col(col_name), 1, 2),
+                    F.substring(F.col(col_name), 4, 1),  # Swap positions 3 and 4
+                    F.substring(F.col(col_name), 3, 1),
+                    F.substring(F.col(col_name), 5, 100)
+                )
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'case_change':
+        # Random case changes
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.upper(F.col(col_name))
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'append':
+        # Append extra text
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.concat(F.col(col_name), F.lit(' Jr'))
+            ).otherwise(F.col(col_name))
+        )
+    
+    return df
+
+
+def _modify_numeric_column(df, col_name, prob, change_type):
+    """Modify numeric column"""
+    
+    if change_type == 'decimal':
+        # Small decimal change (e.g., 50000.50 -> 50000.51)
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.col(col_name) + 0.01
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'small_change':
+        # Small integer change (add 1-5)
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.col(col_name) + F.lit(1)
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'large_change':
+        # Significant change (multiply by 1.1 = 10% increase)
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.col(col_name) * 1.1
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'percentage':
+        # Add 5% to value
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.col(col_name) * 1.05
+            ).otherwise(F.col(col_name))
+        )
+    
+    elif change_type == 'subtract':
+        # Subtract a fixed amount
+        df = df.withColumn(
+            col_name,
+            F.when(
+                F.rand() < prob,
+                F.col(col_name) - 100
+            ).otherwise(F.col(col_name))
+        )
+    
+    return df
+
+
+# =========================================================================
+# USAGE EXAMPLE
+# =========================================================================
+
+def demo_dataframe_comparison():
+    """
+    Complete demo showing how to create test data and introduce differences
+    """
+    from pyspark.sql import Row
+    
+    # Create original DataFrame with 3 column types
+    original_data = [
+        Row(id="CUST001", name="John Smith", salary=50000.00),
+        Row(id="CUST002", name="Jane Doe", salary=55000.50),
+        Row(id="CUST003", name="Bob Johnson", salary=60000.75),
+        Row(id="CUST004", name="Alice Williams", salary=45000.25),
+        Row(id="CUST005", name="Charlie Brown", salary=52000.00),
+        Row(id="CUST006", name="David Miller", salary=58000.50),
+        Row(id="CUST007", name="Emma Davis", salary=61000.00),
+        Row(id="CUST008", name="Frank Wilson", salary=48000.75),
+        Row(id="CUST009", name="Grace Lee", salary=53000.25),
+        Row(id="CUST010", name="Henry Taylor", salary=57000.00),
+    ]
+    
+    df1 = spark.createDataFrame(original_data)
+    
+    print("=" * 80)
+    print("ORIGINAL DATAFRAME (DF1)")
+    print("=" * 80)
+    df1.show(10, truncate=False)
+    
+    # Introduce controlled differences
+    modifications = {
+        'id': {
+            'type': 'alphanumeric',
+            'change_percent': 20,  # Change 20% of IDs
+            'change_type': 'number_change'  # CUST001 -> CUST002
+        },
+        'name': {
+            'type': 'alpha',
+            'change_percent': 30,  # Change 30% of names
+            'change_type': 'typo'  # Smith -> Smyth
+        },
+        'salary': {
+            'type': 'numeric',
+            'change_percent': 40,  # Change 40% of salaries
+            'change_type': 'decimal'  # 50000.00 -> 50000.01
+        }
+    }
+    
+    df2 = introduce_differences(df1, modifications)
+    
+    print("\n" + "=" * 80)
+    print("MODIFIED DATAFRAME (DF2) - WITH INTRODUCED DIFFERENCES")
+    print("=" * 80)
+    df2.show(10, truncate=False)
+    
+    # Now run the comparison
+    print("\n" + "=" * 80)
+    print("RUNNING COMPARISON...")
+    print("=" * 80)
+    
+    comparator = DataFrameComparator(
+        spark=spark,
+        df1=df1,
+        df2=df2,
+        key_columns=['id'],
+        numeric_precision=2,
+        fuzzy_threshold=0.85
+    )
+    
+    report = comparator.compare()
+    
+    # Show detailed report
+    print("\n" + comparator.get_detailed_report())
+    
+    # Show specific column differences
+    print("\n" + "=" * 80)
+    print("DETAILED DIFFERENCES BY COLUMN")
+    print("=" * 80)
+    
+    if 'data_comparison' in report:
+        for col_name, details in report['data_comparison']['column_details'].items():
+            if not details['all_values_match']:
+                print(f"\n❌ Column: {col_name}")
+                print(f"   Type: {details['comparison_type']}")
+                print(f"   Match: {details['match_percentage']}%")
+                
+                if 'sample_mismatches' in details and details['sample_mismatches']:
+                    print(f"   Sample differences:")
+                    for i, sample in enumerate(details['sample_mismatches'][:3], 1):
+                        if details['comparison_type'] == 'numeric':
+                            print(f"   {i}. DF1: {sample['df1_value']} → DF2: {sample['df2_value']} (Diff: {sample['difference']})")
+                        else:
+                            print(f"   {i}. DF1: '{sample['df1_value']}' → DF2: '{sample['df2_value']}' (Score: {sample.get('fuzzy_score', 'N/A')})")
+    
+    return df1, df2, report
+
+
+# Run the demo
+# df1, df2, report = demo_dataframe_comparison()
