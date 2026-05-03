@@ -1,0 +1,388 @@
+def display_comparison_report_visual(report):
+    """
+    Display comparison report in a beautiful visual format for notebooks
+    """
+    from IPython.display import display, HTML
+    import json
+    
+    # Start building HTML
+    html = """
+    <style>
+        .comparison-report {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+        .report-header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .report-header .timestamp {
+            margin-top: 10px;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .overall-status {
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            border-bottom: 3px solid #eee;
+        }
+        .status-pass {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .section {
+            background: white;
+            margin: 20px 0;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .check-icon {
+            color: #28a745;
+            font-size: 20px;
+        }
+        .cross-icon {
+            color: #dc3545;
+            font-size: 20px;
+        }
+        .column-comparison {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+        }
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .column-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+        .match-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+        .badge-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .sample-mismatch {
+            background: white;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 3px solid #dc3545;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        .stats-table {
+            width: 100%;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .stats-table td {
+            padding: 5px 10px;
+        }
+        .stats-label {
+            color: #666;
+            font-weight: 500;
+        }
+        .stats-value {
+            font-weight: bold;
+            text-align: right;
+        }
+    </style>
+    """
+    
+    # Header
+    overall_match = report.get('overall_match', False)
+    timestamp = report.get('comparison_timestamp', 'N/A')
+    
+    html += f"""
+    <div class="comparison-report">
+        <div class="report-header">
+            <h1>📊 DataFrame Comparison Report</h1>
+            <div class="timestamp">Generated: {timestamp}</div>
+        </div>
+        
+        <div class="overall-status {'status-pass' if overall_match else 'status-fail'}">
+            {'✓ DATAFRAMES MATCH' if overall_match else '✗ DIFFERENCES FOUND'}
+        </div>
+    """
+    
+    # Row Count Section
+    row_count = report.get('row_count', {})
+    html += f"""
+        <div class="section">
+            <div class="section-title">📈 Row Count Comparison</div>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">DataFrame 1</div>
+                    <div class="metric-value">{row_count.get('df1_count', 0):,}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">DataFrame 2</div>
+                    <div class="metric-value">{row_count.get('df2_count', 0):,}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Difference</div>
+                    <div class="metric-value" style="color: {'#28a745' if row_count.get('difference', 0) == 0 else '#dc3545'}">
+                        {row_count.get('difference', 0):,}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Match Status</div>
+                    <div class="metric-value">
+                        <span class="{'check-icon' if row_count.get('match', False) else 'cross-icon'}">
+                            {'✓' if row_count.get('match', False) else '✗'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    """
+    
+    # Column Comparison Section
+    columns = report.get('columns', {})
+    html += f"""
+        <div class="section">
+            <div class="section-title">📋 Column Comparison</div>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">DF1 Columns</div>
+                    <div class="metric-value">{columns.get('column_count_df1', 0)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">DF2 Columns</div>
+                    <div class="metric-value">{columns.get('column_count_df2', 0)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Common Columns</div>
+                    <div class="metric-value">{len(columns.get('common_columns', []))}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Match Status</div>
+                    <div class="metric-value">
+                        <span class="{'check-icon' if columns.get('match', False) else 'cross-icon'}">
+                            {'✓' if columns.get('match', False) else '✗'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+    """
+    
+    if columns.get('only_in_df1') or columns.get('only_in_df2'):
+        html += '<div class="warning-box">'
+        if columns.get('only_in_df1'):
+            html += f"<strong>⚠️ Only in DF1:</strong> {', '.join(columns['only_in_df1'])}<br>"
+        if columns.get('only_in_df2'):
+            html += f"<strong>⚠️ Only in DF2:</strong> {', '.join(columns['only_in_df2'])}"
+        html += '</div>'
+    
+    html += '</div>'
+    
+    # Data Comparison Section
+    if 'data_comparison' in report and report['data_comparison'].get('status') == 'COMPLETED':
+        column_details = report['data_comparison'].get('column_details', {})
+        
+        html += """
+        <div class="section">
+            <div class="section-title">🔬 Data Comparison by Column</div>
+        """
+        
+        for col_name, details in column_details.items():
+            match_pct = details.get('match_percentage', 0)
+            all_match = details.get('all_values_match', False)
+            
+            html += f"""
+            <div class="column-comparison" style="border-left-color: {'#28a745' if all_match else '#dc3545'}">
+                <div class="column-header">
+                    <div class="column-name">
+                        {col_name} 
+                        <span style="color: #666; font-size: 12px; font-weight: normal;">
+                            ({details.get('data_type', 'unknown')})
+                        </span>
+                    </div>
+                    <span class="match-badge {'badge-success' if all_match else 'badge-danger'}">
+                        {match_pct}% Match
+                    </span>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {match_pct}%; background: {'linear-gradient(90deg, #28a745 0%, #20c997 100%)' if match_pct > 80 else 'linear-gradient(90deg, #ffc107 0%, #fd7e14 100%)' if match_pct > 50 else 'linear-gradient(90deg, #dc3545 0%, #c82333 100%)'}">
+                        {match_pct}%
+                    </div>
+                </div>
+            """
+            
+            # Statistics
+            if details.get('comparison_type') == 'numeric':
+                stats = details.get('statistics', {})
+                html += f"""
+                <table class="stats-table">
+                    <tr>
+                        <td class="stats-label">Exact Matches:</td>
+                        <td class="stats-value">{details.get('exact_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Mismatches:</td>
+                        <td class="stats-value">{details.get('mismatches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Avg Difference:</td>
+                        <td class="stats-value">{stats.get('average_difference', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Min Difference:</td>
+                        <td class="stats-value">{stats.get('min_difference', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Max Difference:</td>
+                        <td class="stats-value">{stats.get('max_difference', 0):.4f}</td>
+                    </tr>
+                </table>
+                """
+            
+            elif details.get('comparison_type') == 'string_fuzzy':
+                stats = details.get('statistics', {})
+                html += f"""
+                <table class="stats-table">
+                    <tr>
+                        <td class="stats-label">Exact Matches:</td>
+                        <td class="stats-value">{details.get('exact_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Fuzzy Matches:</td>
+                        <td class="stats-value">{details.get('fuzzy_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Avg Fuzzy Score:</td>
+                        <td class="stats-value">{stats.get('average_fuzzy_score', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Min Fuzzy Score:</td>
+                        <td class="stats-value">{stats.get('min_fuzzy_score', 0):.4f}</td>
+                    </tr>
+                </table>
+                """
+            
+            # Sample Mismatches
+            samples = details.get('sample_mismatches', [])
+            if samples and not all_match:
+                html += '<div style="margin-top: 15px;"><strong>Sample Differences:</strong></div>'
+                for i, sample in enumerate(samples[:3], 1):
+                    if details.get('comparison_type') == 'numeric':
+                        decimal_flag = " 🔸 <em>decimal change</em>" if sample.get('is_decimal_change', False) else ""
+                        html += f"""
+                        <div class="sample-mismatch">
+                            <strong>#{i}</strong> 
+                            DF1: {sample.get('df1_value')} → 
+                            DF2: {sample.get('df2_value')} 
+                            (Diff: {sample.get('difference', 0):.4f}){decimal_flag}
+                        </div>
+                        """
+                    else:
+                        html += f"""
+                        <div class="sample-mismatch">
+                            <strong>#{i}</strong> 
+                            DF1: "{sample.get('df1_value')}" → 
+                            DF2: "{sample.get('df2_value')}" 
+                            (Score: {sample.get('fuzzy_score', 0):.4f})
+                        </div>
+                        """
+            
+            html += '</div>'  # Close column-comparison
+        
+        html += '</div>'  # Close section
+    
+    html += '</div>'  # Close comparison-report
+    
+    # Display the HTML
+    display(HTML(html))
+
+
+# USAGE:
+# After running comparison:
+# report = comparator.compare()
+# display_comparison_report_visual(report)
