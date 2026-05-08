@@ -1,0 +1,230 @@
+# ========================================================================
+# DATA PROFILING FEATURE - Add this to your DataFrameComparator class
+# ========================================================================
+
+def _profile_dataframe(self, df: DataFrame, df_name: str) -> Dict:
+    """
+    Profile a DataFrame to detect nulls, duplicates, and data quality issues
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        DataFrame to profile
+    df_name : str
+        Name for reporting (e.g., 'df1' or 'df2')
+        
+    Returns:
+    --------
+    Dict with profiling results
+    """
+    print(f"\n📊 Profiling {df_name}...")
+    
+    total_rows = df.count()
+    total_cols = len(df.columns)
+    
+    # Analyze each column
+    column_profiles = {}
+    
+    for col_name in df.columns:
+        col_type = str(dict(df.dtypes).get(col_name, 'unknown'))
+        
+        # Null analysis
+        null_count = df.filter(F.col(col_name).isNull()).count()
+        null_percentage = round((null_count / total_rows * 100), 2) if total_rows > 0 else 0
+        
+        # Distinct values
+        distinct_count = df.select(col_name).distinct().count()
+        
+        # Empty strings (for string columns)
+        empty_count = 0
+        if 'string' in col_type.lower():
+            empty_count = df.filter(
+                (F.col(col_name) == "") | 
+                (F.trim(F.col(col_name)) == "")
+            ).count()
+        
+        column_profiles[col_name] = {
+            'data_type': col_type,
+            'null_count': null_count,
+            'null_percentage': null_percentage,
+            'distinct_count': distinct_count,
+            'empty_string_count': empty_count if 'string' in col_type.lower() else None,
+            'has_quality_issues': null_count > 0 or empty_count > 0
+        }
+    
+    # Duplicate row detection
+    if self.key_columns:
+        # Check duplicates based on key columns
+        duplicate_count = df.groupBy(self.key_columns).count().filter(F.col("count") > 1).count()
+    else:
+        # Check for completely duplicate rows
+        duplicate_count = total_rows - df.distinct().count()
+    
+    profile_summary = {
+        'dataframe_name': df_name,
+        'total_rows': total_rows,
+        'total_columns': total_cols,
+        'duplicate_rows': duplicate_count,
+        'column_profiles': column_profiles,
+        'columns_with_nulls': [col for col, prof in column_profiles.items() if prof['null_count'] > 0],
+        'columns_with_empty_strings': [col for col, prof in column_profiles.items() 
+                                       if prof.get('empty_string_count', 0) > 0]
+    }
+    
+    # Print summary
+    print(f"   Total Rows: {total_rows:,}")
+    print(f"   Total Columns: {total_cols}")
+    print(f"   Duplicate Rows: {duplicate_count:,}")
+    
+    if profile_summary['columns_with_nulls']:
+        print(f"   ⚠️  Columns with NULLs: {len(profile_summary['columns_with_nulls'])}")
+        for col in profile_summary['columns_with_nulls'][:5]:  # Show first 5
+            null_pct = column_profiles[col]['null_percentage']
+            print(f"      - {col}: {null_pct}% null")
+    
+    if profile_summary['columns_with_empty_strings']:
+        print(f"   ⚠️  Columns with empty strings: {len(profile_summary['columns_with_empty_strings'])}")
+    
+    return profile_summary
+
+
+# ========================================================================
+# UPDATE THE compare() METHOD - Add profiling step
+# ========================================================================
+
+def compare(self) -> Dict:
+    """Execute complete comparison and return detailed report"""
+    print("=" * 80)
+    print("DATAFRAME COMPARISON STARTED")
+    print("=" * 80)
+    
+    # NEW: Add profiling step
+    self.report['df1_profile'] = self._profile_dataframe(self.df1, 'DataFrame 1')
+    self.report['df2_profile'] = self._profile_dataframe(self.df2, 'DataFrame 2')
+    
+    # Existing comparison steps
+    self._compare_row_counts()
+    self._compare_columns()
+    self._compare_schema()
+    
+    if self.report.get('columns_match', False):
+        self._compare_data()
+    else:
+        print("\n⚠️  Skipping data comparison due to column mismatch")
+        self.report['data_comparison'] = {
+            'status': 'SKIPPED',
+            'reason': 'Column names do not match'
+        }
+    
+    self._generate_final_report()
+    return self.report
+
+
+# ========================================================================
+# UPDATE get_detailed_report() - Add profiling section
+# ========================================================================
+
+def get_detailed_report(self) -> str:
+    """Generate a detailed text report"""
+    lines = []
+    lines.append("=" * 100)
+    lines.append("DATAFRAME COMPARISON DETAILED REPORT")
+    lines.append("=" * 100)
+    lines.append(f"\nGenerated: {self.report.get('comparison_timestamp', 'N/A')}")
+    lines.append(f"Overall Match: {'✓ PASS' if self.report.get('overall_match', False) else '✗ FAIL'}")
+    
+    # NEW: Data Quality Profile Section
+    lines.append("\n" + "-" * 100)
+    lines.append("DATA QUALITY PROFILE")
+    lines.append("-" * 100)
+    
+    for df_key in ['df1_profile', 'df2_profile']:
+        if df_key in self.report:
+            profile = self.report[df_key]
+            lines.append(f"\n{profile['dataframe_name']}:")
+            lines.append(f"  Total Rows: {profile['total_rows']:,}")
+            lines.append(f"  Total Columns: {profile['total_columns']}")
+            lines.append(f"  Duplicate Rows: {profile['duplicate_rows']:,}")
+            
+            if profile['columns_with_nulls']:
+                lines.append(f"  Columns with NULLs: {len(profile['columns_with_nulls'])}")
+                for col in profile['columns_with_nulls'][:5]:
+                    col_prof = profile['column_profiles'][col]
+                    lines.append(f"    - {col}: {col_prof['null_count']:,} nulls ({col_prof['null_percentage']}%)")
+    
+    # Existing report sections...
+    # (keep all your existing row count, column, schema, data comparison sections)
+    
+    lines.append("\n" + "=" * 100)
+    return "\n".join(lines)
+
+
+# ========================================================================
+# USAGE EXAMPLE
+# ========================================================================
+
+"""
+The profiling will now run automatically when you call compare():
+
+comparator = DataFrameComparator(
+    spark=spark,
+    df1=df1,
+    df2=df2,
+    key_columns=['customer_id']
+)
+
+report = comparator.compare()
+
+# Access profiling data
+df1_profile = report['df1_profile']
+print(f"DF1 has {df1_profile['duplicate_rows']} duplicate rows")
+print(f"Columns with nulls: {df1_profile['columns_with_nulls']}")
+
+# Or view in detailed report
+print(comparator.get_detailed_report())
+"""
+
+
+# ========================================================================
+# OPTIONAL: Add to visual report display function
+# ========================================================================
+
+def display_comparison_report_visual(report):
+    """
+    Update your existing visual display function to include profiling
+    """
+    # ... existing code ...
+    
+    # Add this section after the header, before row count comparison
+    html += """
+    <div class="section">
+        <div class="section-title">🔍 Data Quality Profile</div>
+        <div class="metric-grid">
+    """
+    
+    for df_key in ['df1_profile', 'df2_profile']:
+        if df_key in report:
+            profile = report[df_key]
+            df_label = "DataFrame 1" if df_key == 'df1_profile' else "DataFrame 2"
+            
+            html += f"""
+            <div class="metric-card">
+                <div class="metric-label">{df_label} - Duplicates</div>
+                <div class="metric-value" style="color: {'#dc3545' if profile['duplicate_rows'] > 0 else '#28a745'}">
+                    {profile['duplicate_rows']:,}
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">{df_label} - Columns with NULLs</div>
+                <div class="metric-value" style="color: {'#dc3545' if len(profile['columns_with_nulls']) > 0 else '#28a745'}">
+                    {len(profile['columns_with_nulls'])}
+                </div>
+            </div>
+            """
+    
+    html += """
+        </div>
+    </div>
+    """
+    
+    # ... rest of existing code ...
