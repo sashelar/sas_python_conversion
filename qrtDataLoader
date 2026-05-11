@@ -1,0 +1,467 @@
+"""
+PySpark Data Loader Class
+A comprehensive class for loading and processing Excel and CSV files using PySpark
+"""
+
+from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql import functions as F
+import pandas as pd
+import io
+import re
+
+
+class PySparkDataLoader:
+    """
+    A class to handle loading and processing of Excel and CSV files with PySpark.
+    Supports metadata-driven loading, transposition, and multi-table Excel parsing.
+    """
+    
+    def __init__(self, spark: SparkSession, run_parameters: dict = None):
+        """
+        Initialize the PySparkDataLoader
+        
+        Args:
+            spark: SparkSession instance
+            run_parameters: Dictionary of runtime parameters for path formatting
+        """
+        self.spark = spark
+        self.run_parameters = run_parameters or {}
+    
+    
+    def loader_xlsx(self, file_path: str, file_sheet: str, header=True, **kwargs):
+        """
+        Load Excel files with optional range specification
+        
+        Args:
+            file_path: Path to the Excel file
+            file_sheet: Name of the sheet to load
+            header: Whether the first row contains headers
+            **kwargs: Additional options including 'file_range' for cell range
+            
+        Returns:
+            DataFrame: Loaded PySpark DataFrame
+        """
+        # Define the list of options to use (in a dictionary)
+        options_dict = {
+            "header": header,
+            "inferSchema": True,
+            "dataAddress": f"'{file_sheet}'!{kwargs.get('file_range', 'A1')}"
+        }
+        
+        df = self.spark.read \
+            .format("com.crealytics.spark.excel") \
+            .options(**options_dict) \
+            .load(file_path)
+        
+        return df
+    
+    
+    def loader_csv(self, file_path: str, file_sheet: str = None, header=True, **kwargs):
+        """
+        Load CSV files
+        
+        Args:
+            file_path: Path to the CSV file
+            file_sheet: Placeholder for compatibility (not used for CSV)
+            header: Whether the first row contains headers
+            **kwargs: Additional options
+            
+        Returns:
+            DataFrame: Loaded PySpark DataFrame
+        """
+        df = self.spark.read \
+            .format("csv") \
+            .option("header", header) \
+            .option("inferSchema", True) \
+            .load(file_path)
+        
+        return df
+    
+    
+    def data_factory(self, file_type: str, **kwargs) -> DataFrame:
+        """
+        Factory method to route to appropriate loader based on file type
+        
+        Args:
+            file_type: Type of file ('xlsx' or 'csv')
+            **kwargs: Parameters to pass to the loader
+            
+        Returns:
+            DataFrame: Loaded PySpark DataFrame
+            
+        Raises:
+            ValueError: If file type is not recognized
+        """
+        if file_type == 'xlsx':
+            loader = self.loader_xlsx
+        elif file_type == 'csv':
+            loader = self.loader_csv
+        else:
+            raise ValueError("File Type is not recognized")
+        
+        df = loader(**kwargs)
+        return df
+    
+    
+    def transpose_cross_tab(self, df: DataFrame, col_static: int = 1):
+        """
+        Transpose a cross-tabulated DataFrame by exploding columns into rows
+        
+        Args:
+            df: Input DataFrame to transpose
+            col_static: Number of static columns to keep (default: 1)
+            
+        Returns:
+            DataFrame: Transposed DataFrame with columns: row_id, column_id, value
+        """
+        # Extract the list of available columns
+        fields = df.columns
+        
+        # Create a map containing the name of the field and its value
+        # Not including the static columns
+        map_values = [
+            fct(field) 
+            for field in fields[col_static + 1:] 
+            for fct in [F.lit, F.col]
+        ]
+        
+        # Explode the map to create row_id, column_id, value structure
+        df = df.select(
+            F.col(fields[col_static]).alias("row_id"),
+            F.explode(F.create_map(*map_values)).alias("column_id", "value")
+        )
+        
+        return df
+    
+    
+    def r1c1_to_a1(self, r1c1_range: str) -> str:
+        """
+        Convert R1C1 notation to A1 notation
+        
+        Examples:
+            R9C1:R18C20 -> A9:T18
+            R1C1:R100C5 -> A1:E100
+        
+        Args:
+            r1c1_range: Range in R1C1 notation (e.g., "R9C1:R18C20")
+            
+        Returns:
+            str: Range in A1 notation (e.g., "A9:T18")
+            
+        Raises:
+            ValueError: If R1C1 notation is invalid
+        """
+        def col_num_to_letter(n: int) -> str:
+            """Convert column number to Excel column letter"""
+            result = ""
+            while n > 0:
+                result = chr((n - 1) % 26 + ord('A')) + result
+                n = (n - 1) // 26
+            return result
+        
+        # Parse R1C1 notation
+        # Pattern: R<row>C<col>:R<row>C<col>
+        pattern = r'R(\d+)C(\d+):R(\d+)C(\d+)'
+        match = re.match(pattern, r1c1_range)
+        
+        if not match:
+            raise ValueError(f"Invalid R1C1 notation: {r1c1_range}")
+        
+        start_row, start_col, end_row, end_col = map(int, match.groups())
+        
+        # Convert to A1 notation
+        start_col_letter = col_num_to_letter(start_col)
+        end_col_letter = col_num_to_letter(end_col)
+        
+        a1_range = f"{start_col_letter}{start_row}:{end_col_letter}{end_row}"
+        
+        return a1_range
+    
+    
+    def loader_qrt_list(self, qrt_id: str, file_path: str, join_between_tables: str = None):
+        """
+        Load multiple tables from a single Excel file where tables are stacked vertically
+        
+        Args:
+            qrt_id: Identifier for the QRT
+            file_path: Path to the Excel file
+            join_between_tables: Optional join condition (format: "col1=col2")
+            
+        Returns:
+            dict: Dictionary of DataFrames with keys like "qrt_id_1", "qrt_id_2", etc.
+        """
+        # Initialize join: if None, replace by empty string
+        if join_between_tables is None:
+            join_between_tables = ""
+        
+        # Let Pandas parse the binary as a full workbook
+        # Pandas will see all columns that Spark is missing
+        bin_data = self.spark.sparkContext.binaryFiles(file_path).map(lambda x: x[1]).collect()[0]
+        pdf = pd.read_excel(io.BytesIO(bin_data), header=None)
+        
+        # Initiate the list object that will contain the list of imported tables
+        tables = []
+        tables_dict = {}
+        
+        # Loop on rows
+        row_idx = 0
+        qrt_part = 1
+        
+        # Pattern to detect table headers (C#### pattern)
+        pattern = r'^C\d+$'
+        
+        while row_idx < len(pdf):
+            # Look for the C#### pattern in the first column
+            cell_value = str(pdf.iloc[row_idx, 0])
+            
+            if re.match(pattern, cell_value):
+                # Capture Header (one row above)
+                header_idx = max(0, row_idx - 1)
+                
+                # Detect the position of the last relevant column
+                last_col_idx = 0
+                while last_col_idx < len(pdf.columns) and pd.notnull(pdf.iloc[header_idx, last_col_idx]):
+                    last_col_idx += 1
+                
+                # Find the end (stop when the first column is empty)
+                end_idx = row_idx
+                while (end_idx < len(pdf) and 
+                       pd.notnull(pdf.iloc[end_idx, 0]) and 
+                       str(pdf.iloc[end_idx, 0]).strip() != ""):
+                    end_idx += 1
+                
+                # Calculate R1C1 range
+                rng = f"R{header_idx + 1}C1:R{end_idx}C{last_col_idx}"
+                rng2 = self.r1c1_to_a1(rng)
+                
+                # Load the table using Spark
+                df_spark = self.spark.read.format("com.crealytics.spark.excel") \
+                    .option("header", True) \
+                    .option("inferSchema", True) \
+                    .option("dataAddress", rng2) \
+                    .load(file_path)
+                
+                tables.append(df_spark)
+                
+                # Add to dictionary with unique key
+                qrt_part_name = f"{qrt_id}_{qrt_part}"
+                tables_dict[qrt_part_name] = df_spark
+                qrt_part += 1
+                
+                # Jump pointer to the end of this table
+                row_idx = end_idx
+            else:
+                row_idx += 1
+        
+        # If a join is specified, join the dataframes into a single one
+        if len(join_between_tables.strip()) != 0:
+            join_col1, join_col2 = join_between_tables.split('=')
+            df_1 = tables_dict[list(tables_dict.keys())[0]]
+            df_2 = tables_dict[list(tables_dict.keys())[1]]
+            
+            joined_df = df_1.join(
+                df_2,
+                df_1[join_col1] == df_2[join_col2],
+                how='inner'
+            )
+            
+            tables_dict[qrt_id] = joined_df
+        
+        return tables_dict
+    
+    
+    def loader_qrt_ccesstabs_loop(self, metadata_file: str, 
+                                    thisrun_qrt_import_type: str,
+                                    thisrun_qrt_import_set: str,
+                                    thisrun_period_path_input: str):
+        """
+        Load multiple Excel files based on metadata configuration (cross-tab format)
+        
+        Args:
+            metadata_file: Path to the metadata Excel file
+            thisrun_qrt_import_type: Import type filter
+            thisrun_qrt_import_set: Import set filter
+            thisrun_period_path_input: Base path for input files
+            
+        Returns:
+            DataFrame: Combined DataFrame with all loaded data
+        """
+        # Load configuration from metadata file
+        mx_config_tabs = self.spark.read \
+            .format("com.crealytics.spark.excel") \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("dataAddress", "'RANGES'!A1") \
+            .load(metadata_file)
+        
+        # Filter configuration
+        mx_config_tabs = mx_config_tabs.where(
+            f"QRT_SOURCE='{thisrun_qrt_import_type}' and QRT_SET='{thisrun_qrt_import_set}'"
+        )
+        
+        # Collect configuration into list
+        qrt_tabs = mx_config_tabs.collect()
+        
+        # Create an empty dataframe that will contain the results
+        schema = StructType([
+            StructField("qrt_id", StringType(), True),
+            StructField("row_id", StringType(), True),
+            StructField("column_id", StringType(), True),
+            StructField("value", DoubleType(), True)
+        ])
+        df_all = self.spark.createDataFrame([], schema=schema)
+        
+        # Loop through each QRT
+        for qrt in qrt_tabs:
+            # Replace the variables by their values
+            file_path = qrt['QRT_PATH'].format(**self.run_parameters)
+            file_path = f"{thisrun_period_path_input}/{file_path}"
+            
+            try:
+                df = self.data_factory(
+                    file_type='xlsx',
+                    file_path=file_path,
+                    file_sheet=qrt.get('SHEET_NAME', 'Sheet1'),
+                    file_range=qrt['RANGE_ID']
+                )
+                
+                print(qrt['QRT_ID'], "loaded:", file_path)
+                
+                # Transpose the cross-tab
+                df = self.transpose_cross_tab(df)
+                
+                # Add QRT ID column
+                df = df.withColumn("qrt_id", F.lit(qrt['QRT_ID']))
+                
+                # Union with results
+                df_all = df_all.unionByName(df)
+                
+            except Exception as e:
+                print(qrt['QRT_ID'], "FAILED:", file_path)
+                print(f"Error: {str(e)}")
+        
+        return df_all
+    
+    
+    def loader_qrt_list_loop(self, metadata_file: str,
+                              thisrun_qrt_import_type: str,
+                              thisrun_qrt_import_set: str,
+                              thisrun_period_path_input: str):
+        """
+        Load multiple Excel files based on metadata configuration (list format with multiple tables)
+        
+        Args:
+            metadata_file: Path to the metadata Excel file
+            thisrun_qrt_import_type: Import type filter
+            thisrun_qrt_import_set: Import set filter
+            thisrun_period_path_input: Base path for input files
+            
+        Returns:
+            dict: Dictionary of all loaded DataFrames
+        """
+        # Load configuration from metadata file
+        my_config_lists = self.spark.read \
+            .format("com.crealytics.spark.excel") \
+            .option("header", "true") \
+            .option("inferSchema", "true") \
+            .option("dataAddress", "'LISTS'!A1") \
+            .load(metadata_file)
+        
+        # Filter configuration
+        my_config_lists = my_config_lists.where(
+            f"QRT_SOURCE='{thisrun_qrt_import_type}' and QRT_SET='{thisrun_qrt_import_set}'"
+        )
+        
+        # Collect configuration
+        cfg_qrt_lists = my_config_lists.collect()
+        
+        # Initialize empty dictionary
+        qrt_lists = {}
+        
+        # Loop on the list
+        for qrt in cfg_qrt_lists:
+            file_path = qrt["QRT_PATH"].format(**self.run_parameters)
+            join_condition = qrt.get("LINK_BETWEEN_TABLES")
+            file_path = f"{thisrun_period_path_input}/{file_path}"
+            
+            print("=" * 50)
+            print(f"Processing: {qrt['QRT_ID']}")
+            print(f"File path: {file_path}")
+            
+            try:
+                # Load the QRT list
+                df_dict = self.loader_qrt_list(
+                    qrt_id=qrt["QRT_ID"],
+                    file_path=file_path,
+                    join_between_tables=join_condition
+                )
+                
+                print(f"Loaded tables: {list(df_dict.keys())}")
+                
+                # Add all dataframes to the result dictionary
+                for key, df in df_dict.items():
+                    qrt_lists[key] = df
+                
+                print(qrt['QRT_ID'], "loaded:", file_path)
+                
+            except Exception as e:
+                print(qrt['QRT_ID'], "FAILED:", file_path)
+                print(f"Error: {str(e)}")
+        
+        return qrt_lists
+
+
+# Example usage
+if __name__ == "__main__":
+    """
+    Example of how to use the PySparkDataLoader class
+    """
+    
+    # Initialize Spark session
+    spark = SparkSession.builder \
+        .appName("PySparkDataLoader") \
+        .config("spark.jars.packages", "com.crealytics:spark-excel_2.12:0.13.7") \
+        .getOrCreate()
+    
+    # Define runtime parameters
+    run_parameters = {
+        'period': '20251231',
+        'environment': 'DEV'
+    }
+    
+    # Initialize the loader
+    loader = PySparkDataLoader(spark, run_parameters)
+    
+    # Example 1: Load a single Excel file
+    # df = loader.loader_xlsx(
+    #     file_path="/path/to/file.xlsx",
+    #     file_sheet="Sheet1",
+    #     file_range="A1:Z100"
+    # )
+    
+    # Example 2: Load using factory method
+    # df = loader.data_factory(
+    #     file_type='xlsx',
+    #     file_path="/path/to/file.xlsx",
+    #     file_sheet="Sheet1",
+    #     file_range="A1:Z100"
+    # )
+    
+    # Example 3: Load cross-tab data with metadata
+    # df_all = loader.loader_qrt_ccesstabs_loop(
+    #     metadata_file="/path/to/metadata.xlsx",
+    #     thisrun_qrt_import_type="QRT",
+    #     thisrun_qrt_import_set="SET1",
+    #     thisrun_period_path_input="/input/path"
+    # )
+    
+    # Example 4: Load list data with metadata
+    # qrt_dicts = loader.loader_qrt_list_loop(
+    #     metadata_file="/path/to/metadata.xlsx",
+    #     thisrun_qrt_import_type="QRT",
+    #     thisrun_qrt_import_set="SET1",
+    #     thisrun_period_path_input="/input/path"
+    # )
+    
+    print("PySparkDataLoader class ready to use!")
