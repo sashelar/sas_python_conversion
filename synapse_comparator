@@ -1,8 +1,3 @@
-# =========================================================================
-# SYNAPSE NOTEBOOK CELL - DataFrame Comparator
-# Copy and paste this entire cell into your Azure Synapse notebook
-# =========================================================================
-
 """
 Spark DataFrame Comparator for Azure Synapse
 Compares two DataFrames and generates detailed comparison reports
@@ -140,6 +135,8 @@ class DataFrameComparator:
         
         schema1 = {field.name: str(field.dataType) for field in self.df1.schema.fields}
         schema2 = {field.name: str(field.dataType) for field in self.df2.schema.fields}
+        print("schema1",schema1)
+        print("schema2",schema2)
         
         common_cols = set(schema1.keys()).intersection(set(schema2.keys()))
         
@@ -184,28 +181,50 @@ class DataFrameComparator:
             valid_keys = [k for k in self.key_columns if k in common_cols]
             if valid_keys:
                 print(f"   Sorting by key columns: {valid_keys}")
-                df1_sorted = df1_compare.orderBy(*valid_keys)
-                df2_sorted = df2_compare.orderBy(*valid_keys)
+                sort_cols = [F.col(c) for c in valid_keys]
+                df1_sorted = df1_compare.orderBy(sort_cols)
+                print("df1_sorted")
+                df1_sorted.show(truncate=False)
+                df2_sorted = df2_compare.orderBy(sort_cols)
+                print("df2_sorted")
+                df2_sorted.show(truncate=False)
             else:
                 print("   ⚠️  Key columns not found, using all columns for sorting")
-                df1_sorted = df1_compare.orderBy(*common_cols)
-                df2_sorted = df2_compare.orderBy(*common_cols)
+                sort_cols = [F.col(c) for c in common_cols]
+                df1_sorted = df1_compare.orderBy(sort_cols)
+                df2_sorted = df2_compare.orderBy(sort_cols)
         else:
             print("   Sorting by all columns for row-by-row comparison")
-            df1_sorted = df1_compare.orderBy(*common_cols)
-            df2_sorted = df2_compare.orderBy(*common_cols)
+            sort_cols = [F.col(c) for c in common_cols]
+            df1_sorted = df1_compare.orderBy(sort_cols)
+            df2_sorted = df2_compare.orderBy(sort_cols)
         
-        # Add row numbers
-        window_spec = Window.orderBy(F.monotonically_increasing_id())
-        df1_numbered = df1_sorted.withColumn("_row_num", F.row_number().over(window_spec))
-        df2_numbered = df2_sorted.withColumn("_row_num", F.row_number().over(window_spec))
-        
-        # Join on row numbers
-        joined_df = df1_numbered.alias("df1").join(
-            df2_numbered.alias("df2"),
-            on="_row_num",
-            how="full_outer"
-        )
+        # # Add row numbers
+        # window_spec = Window.orderBy(F.monotonically_increasing_id())
+        # df1_numbered = df1_sorted.withColumn("_row_num", F.row_number().over(window_spec))
+        # df2_numbered = df2_sorted.withColumn("_row_num", F.row_number().over(window_spec))
+
+        if self.key_columns and valid_keys:
+            print("using key based matching")
+            join_conditions = [df1_sorted[k]==df2_sorted[k] for k in valid_keys]
+            joined_df = df1_sorted.alias("df1").join(
+                df2_sorted.alias("df2"),
+                on=join_conditions,
+                how="full_outer"
+            )
+        else:
+            print(" using row number matching")
+            window_spec = Window.orderBy(F.monotonically_increasing_id())
+            df1_numbered = df1_sorted.withColumn("_row_num", F.row_number().over(window_spec))
+            df2_numbered = df2_sorted.withColumn("_row_num", F.row_number().over(window_spec))                    
+            # Join on row numbers
+            joined_df = df1_numbered.alias("df1").join(
+                df2_numbered.alias("df2"),
+                on="_row_num",
+                how="full_outer"
+            )
+        print("joined_df",joined_df)
+        joined_df.show(20, truncate=False)
         
         # Analyze each column
         column_comparisons = {}
@@ -248,20 +267,32 @@ class DataFrameComparator:
     def _compare_numeric_column(self, joined_df: DataFrame, col_name: str, 
                                 col1: str, col2: str) -> Dict:
         """Compare numeric column with difference calculation"""
+        print("col1", col1)
+        print("col2", col2)
+        common_cols = sorted(list(set(self.df1.columns).intersection(set(self.df2.columns))))
+        valid_keys = [k for k in self.key_columns if k in common_cols]
+        first_key = valid_keys[0] if valid_keys else None 
+        print("first_key",first_key)
+        first_key = f"df1.{first_key}"
+        print("first_key after",first_key)
         
         diff_df = joined_df.select(
+            F.col(first_key).alias("key"),  # Add the first key column  
             F.col(col1).alias("val1"),
             F.col(col2).alias("val2"),
             (F.col(col2) - F.col(col1)).alias("difference"),
             F.abs(F.col(col2) - F.col(col1)).alias("abs_difference"),
-            F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
+            # F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
+            F.when(F.col(col1).eqNullSafe(F.col(col2)), 1).otherwise(0).alias("exact_match")
         ).cache()
         
-        total_rows = diff_df.count()
+        total_rows = self.df1.count()
         
         stats = diff_df.agg(
             F.sum("exact_match").alias("exact_matches"),
             F.count(F.when(F.col("val1").isNotNull() & F.col("val2").isNotNull(), 1)).alias("both_non_null"),
+            F.count(F.when(F.col("val1").isNull() & F.col("val2").isNotNull(), 1)).alias("only_df2_non_null"),  # New  
+            F.count(F.when(F.col("val1").isNotNull() & F.col("val2").isNull(), 1)).alias("only_df1_non_null"),  # New 
             F.avg("difference").alias("avg_difference"),
             F.min("difference").alias("min_difference"),
             F.max("difference").alias("max_difference"),
@@ -270,54 +301,120 @@ class DataFrameComparator:
         
         exact_matches = stats['exact_matches'] or 0
         both_non_null = stats['both_non_null'] or 0
+        only_df2_non_null = stats['only_df2_non_null'] or 0
+        only_df1_non_null = stats['only_df1_non_null'] or 0
+
         
         sample_mismatches = diff_df.filter(
             (F.col("exact_match") == 0) & 
             F.col("val1").isNotNull() & 
             F.col("val2").isNotNull()
         ).limit(10).collect()
+
+        sample_only_df1 = diff_df.filter(F.col("val1").isNotNull() & F.col("val2").isNull()).limit(5).collect()
+        print("sample_only_df1",sample_only_df1)
+        sample_only_df2 = diff_df.filter(F.col("val1").isNull() & F.col("val2").isNotNull()).limit(5).collect()
+        print("sample_only_df2",sample_only_df2)
+        # sample_mismatches = sample_mismatches + sample_only_df1 + sample_only_df2
         
 
         mismatch_samples = []
         for row in sample_mismatches:
-            if row['difference'] is not None:
+            try:
+            # difference = float(row.difference) if row.difference is not None else None 
                 mismatch_samples.append({
-                    'df1_value': float(row['val1']) if row['val1'] is not None else None,
-                    'df2_value': float(row['val2']) if row['val2'] is not None else None,
-                    'difference': float(row['difference']),
-                    'is_decimal_change': abs(float(row['difference'])) < 1
+                    'key': row.key if row.key is not None else "missing row or value",
+                    'df1_value': float(row.val1) if row.val1 is not None else 0,
+                    'df2_value': float(row.val2) if row.val2 is not None else 0,
+                    'difference': float(row.difference) if row.difference is not None else "missing row or value"
+                    # 'is_decimal_change': abs(float(row.difference)) < 1 if row.difference is not None else False
                 })
+            except:
+                print("something went wrong", row)
+                pass
 
-        
+
+        mismatch_only_df1 = []
+        for row in sample_only_df1:
+            try:
+                mismatch_only_df1.append({
+                    'key': row.key if row.key is not None else "missing row or value",
+                    'df1_value': float(row.val1) if row.val1 is not None else 0,
+                    'df2_value': float(row.val2) if row.val2 is not None else 0,
+                    'difference': float(row.difference) if row.difference is not None else "missing row or value",
+                    'is_decimal_change': "missing row or value"
+                })
+            except:
+                print("something went wrong in df1", row)
+                pass        
+
+        mismatch_only_df2 = []
+        for row in sample_only_df2:
+            try:
+                mismatch_only_df2.append({
+                    'key': row.key if row.key is not None else "missing row or value",
+                    'df1_value': float(row.val1) if row.val1 is not None else 0,
+                    'df2_value': float(row.val2) if row.val2 is not None else 0,
+                    'difference': float(row.difference) if row.difference is not None else "missing row or value",
+                    'is_decimal_change': "missing row or value"
+                })
+            except:
+                print("something went wrong in df2", row)
+                pass        
+
+
+        # mismatches_numeric = int(both_non_null - exact_matches) + int(only_df1_non_null)
+        mismatches_numeric = int(total_rows - exact_matches)
         diff_df.unpersist()
         
         return {
             'comparison_type': 'numeric',
             'exact_matches': int(exact_matches),
-            'mismatches': int(both_non_null - exact_matches),
-            'all_values_match': exact_matches == both_non_null,
-            'match_percentage': round((exact_matches / both_non_null * 100), 2) if both_non_null > 0 else 0,
+            'mismatches': mismatches_numeric,
+            'only_in_df1': int(stats['only_df1_non_null'] or 0),  # New  
+            'only_in_df2': int(stats['only_df2_non_null'] or 0),  # New  
+            'all_values_match': mismatches_numeric == 0,
+            'match_percentage': round((exact_matches / total_rows * 100), 2) if total_rows > 0 else 0,
             'statistics': {
                 'average_difference': float(stats['avg_difference']) if stats['avg_difference'] else 0.0,
                 'min_difference': float(stats['min_difference']) if stats['min_difference'] else 0.0,
                 'max_difference': float(stats['max_difference']) if stats['max_difference'] else 0.0,
                 'stddev_difference': float(stats['stddev_difference']) if stats['stddev_difference'] else 0.0
             },
-            'sample_mismatches': mismatch_samples[:5]
+            'sample_mismatches': mismatch_samples[:5],
+            'sample_only_in_df1':mismatch_only_df1[:5],
+            'sample_only_in_df2':mismatch_only_df2[:5]           
         }
     
     def _compare_string_column(self, joined_df: DataFrame, col_name: str,
                                col1: str, col2: str) -> Dict:
         """Compare string column with fuzzy matching"""
+
+        common_cols = sorted(list(set(self.df1.columns).intersection(set(self.df2.columns))))
+        valid_keys = [k for k in self.key_columns if k in common_cols]
+        first_key = valid_keys[0] if valid_keys else None 
+        print("first_key",first_key)
+        first_key = f"df1.{first_key}"
+
         
         comparison_df = joined_df.select(
+            F.col(first_key).alias("key"),  # Add the first key column 
             F.col(col1).alias("val1"),
             F.col(col2).alias("val2"),
-            F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
+            # F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
+            F.when(F.col(col1).eqNullSafe(F.col(col2)), 1).otherwise(0).alias("exact_match")          
         ).filter(
             F.col("val1").isNotNull() & F.col("val2").isNotNull()
         )
         
+        comparison_df_with_null = joined_df.select(
+            F.col(first_key).alias("key"),  # Add the first key column 
+            F.col(col1).alias("val1"),
+            F.col(col2).alias("val2"),
+            # F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
+            F.when(F.col(col1).eqNullSafe(F.col(col2)), 1).otherwise(0).alias("exact_match")            
+        ).cache()
+
         fuzzy_df = comparison_df.withColumn(
             "max_len",
             F.greatest(F.length("val1"), F.length("val2"))
@@ -332,7 +429,8 @@ class DataFrameComparator:
             ).otherwise(1.0)
         ).cache()
         
-        total_rows = fuzzy_df.count()
+        total_rows = self.df1.count()
+        print("total_rows",total_rows)
         
         stats = fuzzy_df.agg(
             F.sum("exact_match").alias("exact_matches"),
@@ -342,22 +440,89 @@ class DataFrameComparator:
         ).collect()[0]
         
         exact_matches = stats['exact_matches'] or 0
+        print("exact_matches",exact_matches)
+
+
+        stats_with_null = comparison_df_with_null.agg(
+            F.count(F.when(F.col("val1").isNotNull() & F.col("val2").isNotNull(), 1)).alias("both_non_null"),
+            F.count(F.when(F.col("val1").isNull() & F.col("val2").isNotNull(), 1)).alias("only_df2_non_null"),  # New  
+            F.count(F.when(F.col("val1").isNotNull() & F.col("val2").isNull(), 1)).alias("only_df1_non_null"),  # New 
+            F.count(F.when(F.col("val1").isNull() & F.col("val2").isNull(), 1)).alias("both_null"),  # New             
+        ).collect()[0]
         
+        only_df2_non_null = stats_with_null['only_df2_non_null'] or 0
+        only_df1_non_null = stats_with_null['only_df1_non_null'] or 0
+        both_non_null = stats_with_null['both_non_null'] or 0
+        both_null = stats_with_null['both_null'] or 0
+        exact_matches = exact_matches + both_null
+        
+        # mismatches_string = int(both_non_null - exact_matches) + int(only_df1_non_null)
+        mismatches_string = int(total_rows - exact_matches)
+
         sample_mismatches = fuzzy_df.filter(
             F.col("exact_match") == 0
         ).orderBy(F.col("fuzzy_score").asc()).limit(10).collect()
+
+        # sample_only_df1 = comparison_df_with_null.filter(F.col("val1").isNotNull() & F.col("val2").isNull()).limit(5).collect()
+
+        sample_only_df1 = comparison_df_with_null.filter(F.col("val1").isNotNull() & F.col("val2").isNull()).withColumn("fuzzy_score", F.lit(0)).limit(5).collect()
+
+        print("sample_only_df1",sample_only_df1)
+        sample_only_df2 = comparison_df_with_null.filter(F.col("val1").isNull() & F.col("val2").isNotNull()).withColumn("fuzzy_score", F.lit(0)).limit(5).collect()
+
+        print("sample_only_df2",sample_only_df2)
+        # sample_mismatches = sample_mismatches + sample_only_df1 + sample_only_df2
+
         
-        mismatch_samples = [
-            {
-                'df1_value': str(row['val1']),
-                'df2_value': str(row['val2']),
-                'fuzzy_score': round(float(row['fuzzy_score']), 4),
-                'fuzzy_match': row['fuzzy_score'] >= self.fuzzy_threshold
-            }
-            for row in sample_mismatches
-        ]
-        
-        fuzzy_matches = fuzzy_df.filter(F.col("fuzzy_score") >= self.fuzzy_threshold).count()
+        mismatch_samples = []
+        for row in sample_mismatches:
+            try:
+                mismatch_samples.append({
+                    'key': row.key if row.key is not None else "missing row or value",                    
+                    'df1_value': str(row.val1) if row.val1 is not None else "missing row or value",
+                    'df2_value': str(row.val2) if row.val2 is not None else "missing row or value",
+                    'fuzzy_score': round(float(row.fuzzy_score), 4),
+                    'fuzzy_match': row.fuzzy_score >= self.fuzzy_threshold
+                })
+            except:
+                print("skipped because of some issue in string")
+                pass
+
+
+
+        mismatch_only_df1 = []
+        for row in sample_only_df1:
+            try:
+                mismatch_only_df1.append({
+                    'key': row.key if row.key is not None else "missing row or value",                    
+                    'df1_value': str(row.val1) if row.val1 is not None else "missing row or value",
+                    'df2_value': str(row.val2) if row.val2 is not None else "missing row or value",
+                    'fuzzy_score': round(float(row.fuzzy_score), 4),
+                    'fuzzy_match': row.fuzzy_score >= self.fuzzy_threshold
+                })
+            except:
+                print("something went wrong in df1", row)
+                pass        
+
+        mismatch_only_df2 = []
+        for row in sample_only_df2:
+            try:
+                mismatch_only_df2.append({
+                    'key': row.key if row.key is not None else "missing row or value",                    
+                    'df1_value': str(row.val1) if row.val1 is not None else "missing row or value",
+                    'df2_value': str(row.val2) if row.val2 is not None else "missing row or value",
+                    'fuzzy_score': round(float(row.fuzzy_score), 4),
+                    'fuzzy_match': row.fuzzy_score >= self.fuzzy_threshold
+                })
+            except:
+                print("something went wrong in df2", row)
+                pass        
+
+        # fuzzy_matches = fuzzy_df.filter(F.col("fuzzy_score") >= self.fuzzy_threshold).count()
+        fuzzy_matches = fuzzy_df.filter(  
+            (F.col("fuzzy_score") >= self.fuzzy_threshold) &  
+            (F.col("fuzzy_score") < 1)).count()
+
         
         fuzzy_df.unpersist()
         
@@ -365,7 +530,9 @@ class DataFrameComparator:
             'comparison_type': 'string_fuzzy',
             'exact_matches': int(exact_matches),
             'fuzzy_matches': int(fuzzy_matches),
-            'mismatches': int(total_rows - exact_matches),
+            'mismatches': mismatches_string,
+            'only_in_df1': int(stats_with_null['only_df1_non_null'] or 0),  # New  
+            'only_in_df2': int(stats_with_null['only_df2_non_null'] or 0),  # New              
             'all_values_match': exact_matches == total_rows,
             'match_percentage': round((exact_matches / total_rows * 100), 2) if total_rows > 0 else 0,
             'fuzzy_threshold': self.fuzzy_threshold,
@@ -374,7 +541,9 @@ class DataFrameComparator:
                 'min_fuzzy_score': round(float(stats['min_fuzzy_score']), 4) if stats['min_fuzzy_score'] else 0.0,
                 'max_fuzzy_score': round(float(stats['max_fuzzy_score']), 4) if stats['max_fuzzy_score'] else 1.0
             },
-            'sample_mismatches': mismatch_samples[:5]
+            'sample_mismatches': mismatch_samples[:5],
+            'sample_only_in_df1':mismatch_only_df1[:5],
+            'sample_only_in_df2':mismatch_only_df2[:5]                       
         }
     
     def _generate_final_report(self):
@@ -406,8 +575,16 @@ class DataFrameComparator:
         
         if 'data_comparison' in self.report and self.report['data_comparison'].get('status') == 'COMPLETED':
             data_details = self.report['data_comparison']['column_details']
-            matching_cols = sum(1 for d in data_details.values() if d['all_values_match'])
+            matching_cols = 0
+
+            for col_name , details in data_details.items():
+                if details.get('all_values_match',False):
+                    matching_cols += 1
             total_cols = len(data_details)
+
+            print("data_details",data_details)
+            # matching_cols = sum([1 for d in data_details.values() if d['all_values_match']])
+            # total_cols = len(data_details)
             print(f"   Data Match: {matching_cols}/{total_cols} columns match perfectly")
         
         print("\n" + "=" * 80)
@@ -484,15 +661,15 @@ def quick_compare_example():
     from pyspark.sql import Row
     
     data1 = [
-        Row(id=1, name="John Doe", age=30, salary=50000.50),
-        Row(id=2, name="Jane Smith", age=25, salary=55000.75),
-        Row(id=3, name="Bob Johnson", age=35, salary=60000.00)
+        Row(id="D10", name="John Doe", age=30, salary=50000.50),
+        Row(id="D20", name="Jane Smith", age=25, salary=55000.75),
+        Row(id="N30", name="Bob Johnson", age=35, salary=60000.00)
     ]
     
     data2 = [
-        Row(id=1, name="John Doe", age=30, salary=50000.51),  # Decimal change
-        Row(id=2, name="Jane Smyth", age=25, salary=55000.75),  # Typo
-        Row(id=3, name="Bob Johnson", age=36, salary=60000.00)  # Age changed
+        Row(id="D10", name="John Doe", age=30, salary=50000.51),  # Decimal change
+        Row(id="D20", name="Jane Smyth", age=25, salary=55000.75),  # Typo
+        Row(id="N30", name="Bob Johnson", age=36, salary=60000.00)  # Age changed
     ]
     
     df1 = spark.createDataFrame(data1)
@@ -520,3 +697,493 @@ def quick_compare_example():
 
 # Uncomment to run example
 # quick_compare_example()
+
+
+
+
+def display_comparison_report_visual(report):
+    """
+    Display comparison report in a beautiful visual format for notebooks
+    """
+    from IPython.display import display, HTML
+    import json
+    
+    # Start building HTML
+    html = """
+    <style>
+        .comparison-report {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+        .report-header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .report-header .timestamp {
+            margin-top: 10px;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .overall-status {
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            border-bottom: 3px solid #eee;
+        }
+        .status-pass {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .section {
+            background: white;
+            margin: 20px 0;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .check-icon {
+            color: #28a745;
+            font-size: 20px;
+        }
+        .cross-icon {
+            color: #dc3545;
+            font-size: 20px;
+        }
+        .column-comparison {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+        }
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .column-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+        .match-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+        .badge-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .sample-mismatch {
+            background: white;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 3px solid #dc3545;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        .stats-table {
+            width: 100%;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .stats-table td {
+            padding: 5px 10px;
+        }
+        .stats-label {
+            color: #666;
+            font-weight: 500;
+        }
+        .stats-value {
+            font-weight: bold;
+            text-align: right;
+        }
+    </style>
+    """
+    
+    # Header
+    overall_match = report.get('overall_match', False)
+    timestamp = report.get('comparison_timestamp', 'N/A')
+    
+    html += f"""
+    <div class="comparison-report">
+        <div class="report-header">
+            <h1>📊 DataFrame Comparison Report</h1>
+            <div class="timestamp">Generated: {timestamp}</div>
+        </div>
+        
+        <div class="overall-status {'status-pass' if overall_match else 'status-fail'}">
+            {'✓ DATAFRAMES MATCH' if overall_match else '✗ DIFFERENCES FOUND'}
+        </div>
+    """
+    
+    # Row Count Section
+    row_count = report.get('row_count', {})
+    html += f"""
+        <div class="section">
+            <div class="section-title">📈 Row Count Comparison</div>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">DataFrame 1</div>
+                    <div class="metric-value">{row_count.get('df1_count', 0):,}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">DataFrame 2</div>
+                    <div class="metric-value">{row_count.get('df2_count', 0):,}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Difference</div>
+                    <div class="metric-value" style="color: {'#28a745' if row_count.get('difference', 0) == 0 else '#dc3545'}">
+                        {row_count.get('difference', 0):,}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Match Status</div>
+                    <div class="metric-value">
+                        <span class="{'check-icon' if row_count.get('match', False) else 'cross-icon'}">
+                            {'✓' if row_count.get('match', False) else '✗'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    """
+    
+    # Column Comparison Section
+    columns = report.get('columns', {})
+    html += f"""
+        <div class="section">
+            <div class="section-title">📋 Column Comparison</div>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">DF1 Columns</div>
+                    <div class="metric-value">{columns.get('column_count_df1', 0)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">DF2 Columns</div>
+                    <div class="metric-value">{columns.get('column_count_df2', 0)}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Common Columns</div>
+                    <div class="metric-value">{len(columns.get('common_columns', []))}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Match Status</div>
+                    <div class="metric-value">
+                        <span class="{'check-icon' if columns.get('match', False) else 'cross-icon'}">
+                            {'✓' if columns.get('match', False) else '✗'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+    """
+    
+    if columns.get('only_in_df1') or columns.get('only_in_df2'):
+        html += '<div class="warning-box">'
+        if columns.get('only_in_df1'):
+            html += f"<strong>⚠️ Only in DF1:</strong> {', '.join(columns['only_in_df1'])}<br>"
+        if columns.get('only_in_df2'):
+            html += f"<strong>⚠️ Only in DF2:</strong> {', '.join(columns['only_in_df2'])}"
+        html += '</div>'
+    
+    html += '</div>'
+    
+    # Data Comparison Section
+    if 'data_comparison' in report and report['data_comparison'].get('status') == 'COMPLETED':
+        column_details = report['data_comparison'].get('column_details', {})
+        
+        html += """
+        <div class="section">
+            <div class="section-title">🔬 Data Comparison by Column</div>
+        """
+        
+        for col_name, details in column_details.items():
+            match_pct = details.get('match_percentage', 0)
+            all_match = details.get('all_values_match', False)
+            
+            html += f"""
+            <div class="column-comparison" style="border-left-color: {'#28a745' if all_match else '#dc3545'}">
+                <div class="column-header">
+                    <div class="column-name">
+                        {col_name} 
+                        <span style="color: #666; font-size: 12px; font-weight: normal;">
+                            ({details.get('data_type', 'unknown')})
+                        </span>
+                    </div>
+                    <span class="match-badge {'badge-success' if all_match else 'badge-danger'}">
+                        {match_pct}% Match
+                    </span>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {match_pct}%; background: {'linear-gradient(90deg, #28a745 0%, #20c997 100%)' if match_pct > 80 else 'linear-gradient(90deg, #ffc107 0%, #fd7e14 100%)' if match_pct > 50 else 'linear-gradient(90deg, #dc3545 0%, #c82333 100%)'}">
+                        {match_pct}%
+                    </div>
+                </div>
+            """
+            
+            # Statistics
+            if details.get('comparison_type') == 'numeric':
+                stats = details.get('statistics', {})
+                html += f"""
+                <table class="stats-table">
+                    <tr>
+                        <td class="stats-label">Exact Matches:</td>
+                        <td class="stats-value">{details.get('exact_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Mismatches:</td>
+                        <td class="stats-value">{details.get('mismatches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">rows only in DF1:</td>
+                        <td class="stats-value">{details.get('only_in_df1', 0):,}</td>
+                    </tr>                    
+                    <tr>
+                        <td class="stats-label">rows only in DF2:</td>
+                        <td class="stats-value">{details.get('only_in_df2', 0):,}</td>
+                    </tr>                                                            
+                    <tr>
+                        <td class="stats-label">Avg Difference:</td>
+                        <td class="stats-value">{stats.get('average_difference', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Min Difference:</td>
+                        <td class="stats-value">{stats.get('min_difference', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Max Difference:</td>
+                        <td class="stats-value">{stats.get('max_difference', 0):.4f}</td>
+                    </tr>
+                </table>
+                """
+            
+            elif details.get('comparison_type') == 'string_fuzzy':
+                stats = details.get('statistics', {})
+                html += f"""
+                <table class="stats-table">
+                    <tr>
+                        <td class="stats-label">Exact Matches:</td>
+                        <td class="stats-value">{details.get('exact_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Fuzzy Matches:</td>
+                        <td class="stats-value">{details.get('fuzzy_matches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Mismatches:</td>
+                        <td class="stats-value">{details.get('mismatches', 0):,}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">rows only in DF1:</td>
+                        <td class="stats-value">{details.get('only_in_df1', 0):,}</td>
+                    </tr>                    
+                    <tr>
+                        <td class="stats-label">rows only in DF2:</td>
+                        <td class="stats-value">{details.get('only_in_df2', 0):,}</td>
+                    </tr>                                        
+                    <tr>
+                        <td class="stats-label">Avg Fuzzy Score:</td>
+                        <td class="stats-value">{stats.get('average_fuzzy_score', 0):.4f}</td>
+                    </tr>
+                    <tr>
+                        <td class="stats-label">Min Fuzzy Score:</td>
+                        <td class="stats-value">{stats.get('min_fuzzy_score', 0):.4f}</td>
+                    </tr>
+                </table>
+                """
+            
+            # Sample Mismatches
+            samples = details.get('sample_mismatches', [])
+            if samples and not all_match:
+                html += '<div style="margin-top: 15px;"><strong>Sample Differences:</strong></div>'
+                for i, sample in enumerate(samples[:3], 1):
+                    if details.get('comparison_type') == 'numeric':
+                        decimal_flag = " 🔸 <em>decimal change</em>" if sample.get('is_decimal_change', False) else ""
+                        difference_numeric = sample.get('difference', 0) 
+
+                        if isinstance(difference_numeric, (int, float)):  
+                            formatted_output = f"{difference_numeric:.4f}{decimal_flag}"  
+                        else:  
+                            formatted_output = str(difference_numeric) 
+
+                        html += f"""
+                        <div class="sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} : 
+                            DF1: {sample.get('df1_value')} → 
+                            DF2: {sample.get('df2_value')} 
+                            (Diff: {formatted_output})
+                        </div>
+                        """
+                    else:
+                        html += f"""
+                        <div class="sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} :                             
+                            DF1: "{sample.get('df1_value')}" → 
+                            DF2: "{sample.get('df2_value')}" 
+                            (Score: {sample.get('fuzzy_score', 0):.4f})
+                        </div>
+                        """
+
+            # Only DF1 entry which is not present in DF2
+            samples = details.get('sample_only_in_df1', [])
+            if samples and not all_match:
+                html += '<div style="margin-top: 15px;"><strong>sample rows only in DF1 :</strong></div>'
+                for i, sample in enumerate(samples[:3], 1):
+                    if details.get('comparison_type') == 'numeric':
+                        decimal_flag = " 🔸 <em>decimal change</em>" if sample.get('is_decimal_change', False) else ""
+                        difference_numeric = sample.get('difference', 0) 
+
+                        if isinstance(difference_numeric, (int, float)):  
+                            formatted_output = f"{difference_numeric:.4f}{decimal_flag}"  
+                        else:  
+                            formatted_output = str(difference_numeric) 
+
+                        html += f"""
+                        <div class="only-df1-sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} : 
+                            DF1: {sample.get('df1_value')} → 
+                            DF2: {sample.get('df2_value')} 
+                            (Diff: {formatted_output})
+                        </div>
+                        """
+                    else:
+                        html += f"""
+                        <div class="only-df1-sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} :                             
+                            DF1: "{sample.get('df1_value')}" → 
+                            DF2: "{sample.get('df2_value')}" 
+                            (Score: {sample.get('fuzzy_score', 0):.4f})
+                        </div>
+                        """
+
+            # Only DF2 entry which is not present in DF1
+            samples = details.get('sample_only_in_df2', [])
+            if samples and not all_match:
+                html += '<div style="margin-top: 15px;"><strong>sample rows only in DF2 :</strong></div>'
+                for i, sample in enumerate(samples[:3], 1):
+                    if details.get('comparison_type') == 'numeric':
+                        decimal_flag = " 🔸 <em>decimal change</em>" if sample.get('is_decimal_change', False) else ""
+                        difference_numeric = sample.get('difference', 0) 
+
+                        if isinstance(difference_numeric, (int, float)):  
+                            formatted_output = f"{difference_numeric:.4f}{decimal_flag}"  
+                        else:  
+                            formatted_output = str(difference_numeric) 
+
+                        html += f"""
+                        <div class="only-df2-sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} : 
+                            DF1: {sample.get('df1_value')} → 
+                            DF2: {sample.get('df2_value')} 
+                            (Diff: {formatted_output})
+                        </div>
+                        """
+                    else:
+                        html += f"""
+                        <div class="only-df2-sample-mismatch">
+                            <strong>#{i}</strong> 
+                            Key: {sample.get('key')} :                             
+                            DF1: "{sample.get('df1_value')}" → 
+                            DF2: "{sample.get('df2_value')}" 
+                            (Score: {sample.get('fuzzy_score', 0):.4f})
+                        </div>
+                        """
+
+
+            html += '</div>'  # Close column-comparison
+        
+        html += '</div>'  # Close section
+    
+    html += '</div>'  # Close comparison-report
+    
+    # Display the HTML
+    display(HTML(html))
+
+
+# USAGE:
+# After running comparison:
+# report = comparator.compare()
+# display_comparison_report_visual(report)
