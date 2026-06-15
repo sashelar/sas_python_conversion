@@ -1,0 +1,37 @@
+def save_results(spark, summary_records, detail_records, adls_path):
+    """
+    Save comparison results to ADLS as JSON — call this once after running comparisons.
+    adls_path example: "abfss://container@storage.dfs.core.windows.net/comparison_results/"
+    """
+    import json
+    payload = {
+        "summary": summary_records,
+        "detail":  detail_records
+    }
+    payload_str = json.dumps(payload, default=str)
+    df = spark.createDataFrame([(payload_str,)], ["data"])
+    df.coalesce(1).write.mode("overwrite").text(adls_path)
+    print(f"✅ Results saved to: {adls_path}")
+
+
+def load_and_render(spark, adls_path):
+    """
+    Load saved results from ADLS and render dashboard — no comparisons re-run.
+    adls_path example: "abfss://container@storage.dfs.core.windows.net/comparison_results/"
+    """
+    import json
+    raw = spark.read.text(adls_path).collect()[0][0]
+    payload = json.loads(raw)
+    summary_json = json.dumps(payload["summary"], default=str)
+    detail_json  = json.dumps(payload["detail"],  default=str)
+    display(HTML(_build_html(summary_json, detail_json)))
+
+
+# ── Tonight — run once and save ──────────────────────────
+summary_records, detail_records = run_comparisons(spark, datasets)
+save_results(spark, summary_records, detail_records,
+             "abfss://container@storage.dfs.core.windows.net/comparison_results/")
+
+# ── Tomorrow in presentation — just load and show ────────
+load_and_render(spark,
+                "abfss://container@storage.dfs.core.windows.net/comparison_results/")
