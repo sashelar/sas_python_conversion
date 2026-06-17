@@ -42,3 +42,49 @@ flowchart TD
 
 </div>
 """))
+
+
+
+from IPython.display import display, HTML
+
+display(HTML("""
+<div style="font-family:Segoe UI,sans-serif; max-width:600px; margin:auto; padding:20px;">
+
+  <h2 style="text-align:center; color:#333; margin-bottom:30px;">
+      SAS → PySpark Validation Pipeline
+  </h2>
+
+  <!-- business nodes -->
+  <div style="background:#667eea;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">📂 Raw SAS Datasets</div>
+  <div style="text-align:center;font-size:24px;color:#667eea">↓</div>
+  <div style="background:#667eea;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">⚡ Load into Azure Synapse</div>
+  <div style="text-align:center;font-size:24px;color:#667eea">↓</div>
+  <div style="background:#667eea;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">🔍 Data Profiling — Find Unique Keys</div>
+  <div style="text-align:center;font-size:24px;color:#667eea">↓</div>
+  <div style="background:#667eea;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">🗝️ Key Dictionary Built Dynamically</div>
+  <div style="text-align:center;font-size:24px;color:#667eea">↓</div>
+
+  <!-- technical node -->
+  <div style="background:#764ba2;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">⚙️ DataFrameComparator</div>
+  <div style="text-align:center;font-size:24px;color:#764ba2">↓</div>
+
+  <!-- 3 parallel checks -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:4px 0;">
+    <div style="background:#764ba2;color:white;padding:12px;border-radius:8px;text-align:center;font-size:13px;font-weight:600">📊 Row Count Check</div>
+    <div style="background:#764ba2;color:white;padding:12px;border-radius:8px;text-align:center;font-size:13px;font-weight:600">📋 Schema & Column Check</div>
+    <div style="background:#764ba2;color:white;padding:12px;border-radius:8px;text-align:center;font-size:13px;font-weight:600">🔬 Data Comparison<br><span style="font-size:11px;font-weight:400">Numeric · Fuzzy String</span></div>
+  </div>
+  <div style="text-align:center;font-size:24px;color:#764ba2">↓</div>
+
+  <!-- storage -->
+  <div style="background:#f0a500;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">💾 Save Results to ADLS — Run Once · Reuse Anytime</div>
+  <div style="text-align:center;font-size:24px;color:#f0a500">↓</div>
+
+  <!-- 2 outputs -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div style="background:#28a745;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">📈 Comparison Dashboard<br><span style="font-size:12px;font-weight:400">All datasets · Filter · Drill down</span></div>
+    <div style="background:#28a745;color:white;padding:14px;border-radius:8px;text-align:center;font-weight:600">🧾 Single Dataset View<br><span style="font-size:12px;font-weight:400">Column detail · Sample mismatches</span></div>
+  </div>
+
+</div>
+"""))
