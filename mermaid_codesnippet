@@ -1,6 +1,12 @@
-display(HTML("""
-<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({startOnLoad:true, theme:'default'});</script>
+from IPython.display import display, HTML
+
+# read mermaid.min.js from ADLS
+mermaid_js = spark.read.text("abfss://container@storage.dfs.core.windows.net/libs/mermaid.min.js").collect()
+mermaid_js_str = "\n".join([row[0] for row in mermaid_js])
+
+display(HTML(f"""
+<script>{mermaid_js_str}</script>
+<script>mermaid.initialize({{startOnLoad:true, theme:'default'}});</script>
 
 <div style="background:white; padding:30px; border-radius:12px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.08); max-width:700px; margin:auto;">
@@ -11,7 +17,6 @@ display(HTML("""
 
   <div class="mermaid">
 flowchart TD
-
     A(["📂 Raw SAS Datasets"])
     B(["⚡ Load into Azure Synapse"])
     C(["🔍 Data Profiling"])
@@ -42,7 +47,6 @@ flowchart TD
 
 </div>
 """))
-
 
 
 from IPython.display import display, HTML
