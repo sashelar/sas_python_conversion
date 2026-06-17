@@ -1,0 +1,18 @@
+# read the js file from ADLS into a string
+mermaid_js = spark.read.text("abfss://container@storage.dfs.core.windows.net/libs/mermaid.min.js") \
+                  .collect()
+mermaid_js_str = "\n".join([row[0] for row in mermaid_js])
+
+# inject fully inline — zero external calls
+from IPython.display import display, HTML
+display(HTML(f"""
+<script>{mermaid_js_str}</script>
+<script>mermaid.initialize({{startOnLoad:true}});</script>
+<div class="mermaid">
+flowchart LR
+    A[SAS Dataset] --> B[Load into Spark]
+    B --> C[Run Comparator]
+    C --> D[Save to ADLS]
+    D --> E[Dashboard]
+</div>
+"""))
