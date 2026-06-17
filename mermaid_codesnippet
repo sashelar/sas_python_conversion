@@ -1,18 +1,85 @@
-# read the js file from ADLS into a string
-mermaid_js = spark.read.text("abfss://container@storage.dfs.core.windows.net/libs/mermaid.min.js") \
-                  .collect()
-mermaid_js_str = "\n".join([row[0] for row in mermaid_js])
+# =========================================================================
+# SYNAPSE NOTEBOOK CELL - Pipeline Diagram
+# Run this in a CODE cell in your Synapse notebook
+# =========================================================================
 
-# inject fully inline — zero external calls
+# STEP 1 — read mermaid.min.js from ADLS (upload it there first)
+# mermaid_js = spark.read.text("abfss://container@storage.dfs.core.windows.net/libs/mermaid.min.js").collect()
+# mermaid_js_str = "\n".join([row[0] for row in mermaid_js])
+
+# STEP 2 — OR use CDN if internet is allowed in your environment
+# replace the <script src=...> with inline script if using ADLS approach
+
 from IPython.display import display, HTML
-display(HTML(f"""
-<script>{mermaid_js_str}</script>
-<script>mermaid.initialize({{startOnLoad:true}});</script>
-<div class="mermaid">
-flowchart LR
-    A[SAS Dataset] --> B[Load into Spark]
-    B --> C[Run Comparator]
-    C --> D[Save to ADLS]
-    D --> E[Dashboard]
+
+display(HTML("""
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme:'base',
+    themeVariables: {
+        primaryColor:        '#667eea',
+        primaryTextColor:    '#ffffff',
+        primaryBorderColor:  '#764ba2',
+        lineColor:           '#667eea',
+        secondaryColor:      '#f0f2f5',
+        tertiaryColor:       '#ffffff',
+        fontSize:            '16px'
+    }
+});</script>
+
+<div style="background:white; padding:30px; border-radius:12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08); max-width:700px; margin:auto;">
+
+  <h2 style="text-align:center; font-family:Segoe UI; color:#333; margin-bottom:24px;">
+      SAS → PySpark Validation Pipeline
+  </h2>
+
+  <div class="mermaid">
+flowchart TD
+
+    %% ── Business Layer ──────────────────────────────
+    A(["📂  Raw SAS Datasets\n──────────────────\nSource data from legacy SAS system"])
+    B(["⚡  Load into Azure Synapse\n──────────────────\nConvert SAS files into Spark DataFrames"])
+    C(["🔍  Data Profiling\n──────────────────\nScan columns · Measure uniqueness\nIdentify natural join keys"])
+    D(["🗝️  Key Dictionary\n──────────────────\nDataset name  →  Unique key column\nDrives all comparisons dynamically"])
+
+    %% ── Technical Layer ─────────────────────────────
+    E(["⚙️  DataFrameComparator\n──────────────────\nPySpark class · No dbutils dependency\nWorks natively in Azure Synapse"])
+
+    F(["📊  Row Count Check\n──────────────────\nCount match · Row difference %"])
+    G(["📋  Schema & Column Check\n──────────────────\nData types · Extra columns\nCommon columns identified"])
+    H(["🔬  Data Comparison\n──────────────────\nNumeric  →  exact match + avg diff\nString   →  fuzzy Levenshtein score\nKey-based row matching"])
+
+    I(["💾  Save Results to ADLS\n──────────────────\nParquet + raw JSON reports\nRun once · Reuse anytime"])
+
+    %% ── Output Layer ────────────────────────────────
+    J(["📈  Comparison Dashboard\n──────────────────\nAll datasets · Filter · Sort\nClick to expand column breakdown"])
+    K(["🧾  Single Dataset Deep Dive\n──────────────────\ndisplay_comparison_report_visual\nSample mismatches · Fuzzy scores"])
+
+    %% ── Connections ─────────────────────────────────
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    E --> G
+    E --> H
+    F --> I
+    G --> I
+    H --> I
+    I --> J
+    I --> K
+
+    %% ── Styles ──────────────────────────────────────
+    classDef business  fill:#667eea,stroke:#764ba2,color:#fff,rx:8
+    classDef technical fill:#764ba2,stroke:#667eea,color:#fff,rx:8
+    classDef output    fill:#28a745,stroke:#1e7e34,color:#fff,rx:8
+    classDef storage   fill:#f0a500,stroke:#c17f00,color:#fff,rx:8
+
+    class A,B,C,D business
+    class E,F,G,H technical
+    class I storage
+    class J,K output
+  </div>
+
 </div>
 """))
