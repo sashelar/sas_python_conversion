@@ -178,3 +178,42 @@ mssparkutils.fs.cp(f"file:{local_tmp_path}", output_file, True)  # True = overwr
 os.remove(local_tmp_path)
 
 print("Forced changes exported to:", output_file)
+
+
+
+import re
+
+def sanitize_columns(df):
+    """
+    Renames any column containing non-alphanumeric/underscore characters
+    to a safe underscore-only name. Returns (sanitized_df, mapping) where
+    mapping = {safe_name: original_name} — keep this to restore later.
+    """
+    mapping = {}
+    df_out = df
+    used = set(df.columns)
+
+    for col in df.columns:
+        if re.fullmatch(r"[A-Za-z0-9_]+", col):
+            continue  # already safe, leave as-is
+
+        safe = re.sub(r"[^0-9A-Za-z]+", "_", col).strip("_") or "col"
+        base, i = safe, 1
+        while safe in used and safe != col:
+            safe = f"{base}_{i}"
+            i += 1
+
+        used.add(safe)
+        mapping[safe] = col
+        df_out = df_out.withColumnRenamed(col, safe)
+
+    return df_out, mapping
+
+
+def restore_columns(df, mapping):
+    """Renames any column in df matching a key in mapping back to its original name."""
+    df_out = df
+    for safe, original in mapping.items():
+        if safe in df_out.columns:
+            df_out = df_out.withColumnRenamed(safe, original)
+    return df_out
