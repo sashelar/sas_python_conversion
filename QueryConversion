@@ -1,168 +1,169 @@
 # =========================================================================
-# PySpark equivalent of the SAS AssetDBEntry_inclBGAAP logic
-# Intended for an Azure Synapse Spark notebook
+# Spark SQL equivalent of the SAS AssetDBEntry_inclBGAAP logic
+# Three separate views, one per SAS block, in the same order as the SAS.
 #
-# ASSUMPTIONS (please verify against your real schemas before running):
-#   - The SAS name-literals (e.g. b.'A Accounting Value acc excl FVA'n) are
-#     actual column names containing spaces/punctuation in Annex_21. They
-#     are renamed below to underscore-safe names right after reading.
-#     Update the renames to match your real column names.
-#   - The "source in ('GPMS')" filter in each join condition refers to the
-#     `source` column of the table being joined (b/c/d), not of `a`.
-#     Adjust if it's actually a.source.
+# ASSUMPTIONS — please verify:
+#   - Annex_21's SAS name-literal columns are referenced with backticks
+#     exactly as written in the SAS. Change only the backtick-quoted
+#     names if your real column names differ.
+#   - "source in ('GPMS')" in each join filters the *joined* table's
+#     source column (b.source / c.source / d.source), not a.source.
 #   - Quantity_accounting, source, assets_agr, accounting_value_IFRS,
-#     Solvency_II_value, Transparancy_Percentage and accrued all live on
-#     table `a` (they survive via a.*).
-#   - Parameters THISRUN_REPORTING_DATE_NUM / THISRUN_OUT_ROOT_PATH /
-#     THISRUN_CONTEXT_ID are passed in as notebook parameters (e.g. from a
-#     Synapse pipeline) — set them in the first cell.
+#     Solvency_II_value, Transparancy_Percentage, accrued all come from
+#     table `a` (TMP_ADB.REP_ENTRY_...).
 # =========================================================================
 
-from pyspark.sql import functions as F
-from pyspark.sql.window import Window
-
-# -------------------------------------------------------------------------
-# Notebook parameters (mark this cell as a "Parameters" cell if used in a
-# pipeline, same role as the SAS macro variables &THISRUN_...)
-# -------------------------------------------------------------------------
-THISRUN_REPORTING_DATE_NUM = "20260331"   # e.g. yyyymmdd
+THISRUN_REPORTING_DATE_NUM = "20260331"
 THISRUN_OUT_ROOT_PATH = "abfss://container@account.dfs.core.windows.net/path"
 THISRUN_CONTEXT_ID = "CTX001"
 
+# -------------------------------------------------------------------------
+# Make the source tables queryable by name in SQL.
+# Skip this if they're already catalog tables/views in your Synapse Spark
+# metastore — just use their real names directly in the FROM/JOIN below.
+# -------------------------------------------------------------------------
+spark.table(f"TMP_ADB.REP_ENTRY_{THISRUN_REPORTING_DATE_NUM}").createOrReplaceTempView("a_src")
+spark.table("Annex_21").createOrReplaceTempView("Annex_21")
+spark.table("BS_Capline").createOrReplaceTempView("BS_Capline")
+spark.table("BS_Interfinance").createOrReplaceTempView("BS_Interfinance")
+
 
 # =========================================================================
-# STEP 1  (was: create table AssetDBEntry_inclBGAAP as select ... group by)
+# STEP 1 — literal translation of:
+#   create table AssetDBEntry_inclBGAAP as
+#   select a.*, count(a.buy_transaction_code) as cnt, coalesce(...), coalesce(...)
+#   from ... left outer join ... left outer join ... left outer join ...
+#   group by a.buy_transaction_code;
 #
-# NOTE on the SAS quirk being replicated here:
-#   SAS PROC SQL allows count(a.buy_transaction_code) alongside select a.*
-#   with a GROUP BY — it does NOT collapse rows. It "remerges" the
-#   aggregate back onto every detail row. That is exactly the behaviour of
-#   a window function, so we use count(...).over(Window.partitionBy(...))
-#   instead of a real groupBy().agg() (which would collapse rows).
+# In SAS proc sql, count(...) alongside a.* with GROUP BY does not
+# collapse rows — it remerges the aggregate onto every detail row.
+# COUNT(...) OVER (PARTITION BY ...) is the literal equivalent of that
+# behaviour, not a substitute for it.
 # =========================================================================
 
-a = spark.table(f"TMP_ADB.REP_ENTRY_{THISRUN_REPORTING_DATE_NUM}")
-b = spark.table("Annex_21")
-c = spark.table("BS_Capline")
-d = spark.table("BS_Interfinance")
-
-# Rename SAS name-literal columns in Annex_21 to plain identifiers.
-# >>> Update these to the exact source column names in your environment. <<<
-b = (
-    b.withColumnRenamed("A Accounting Value acc excl FVA", "acct_val_excl_FVA")
-     .withColumnRenamed("P Accrued Interest End - No Tota", "accrued_interest_no_tota")
-     .withColumnRenamed("A Buy Transaction", "buy_transaction")
-)
-
-joined = (
-    a.alias("a")
-    .join(
-        b.alias("b"),
-        on=(F.col("a.Buy_Transaction_Code") == F.col("b.buy_transaction"))
-        & (F.col("b.source") == "GPMS"),
-        how="left",
-    )
-    .join(
-        c.alias("c"),
-        on=(F.col("a.Buy_Transaction_Code") == F.col("c.Buy_Transaction_Code"))
-        & (F.col("c.source") == "GPMS"),
-        how="left",
-    )
-    .join(
-        d.alias("d"),
-        on=(F.col("a.Buy_Transaction_Code") == F.col("d.Buy_Transaction_Code"))
-        & (F.col("d.source") == "GPMS"),
-        how="left",
-    )
-)
-
-# cnt = count(a.buy_transaction_code) "grouped" but remerged onto every row
-win_by_key = Window.partitionBy("a.Buy_Transaction_Code")
-joined = joined.withColumn("cnt", F.count(F.col("a.Buy_Transaction_Code")).over(win_by_key))
-
-asset_db_entry_inclBGAAP = joined.select(
-    "a.*",
-    "cnt",
-    F.coalesce(
-        F.col("b.acct_val_excl_FVA"),
-        F.col("c.Accounting_Value_BGAAP"),
-        F.col("d.Accounting_Value_BGAAP"),
-    ).alias("accounting_value_BGAAP"),
-    F.coalesce(
-        F.col("b.accrued_interest_no_tota"),
-        F.col("c.Accrued"),
-        F.col("d.Accrued"),
-    ).alias("Accrued_BGAAP"),
-)
-
-asset_db_entry_inclBGAAP.cache()
-print("Step 1 row count:", asset_db_entry_inclBGAAP.count())
+spark.sql("""
+CREATE OR REPLACE TEMP VIEW AssetDBEntry_inclBGAAP AS
+SELECT
+    a.*,
+    COUNT(a.Buy_Transaction_Code) OVER (PARTITION BY a.Buy_Transaction_Code) AS cnt,
+    COALESCE(b.`A Accounting Value acc excl FVA`,
+             c.Accounting_Value_BGAAP,
+             d.Accounting_Value_BGAAP) AS accounting_value_BGAAP,
+    COALESCE(b.`P Accrued Interest End - No Tota`,
+             c.Accrued,
+             d.Accrued) AS Accrued_BGAAP
+FROM a_src a
+LEFT JOIN Annex_21 b
+    ON a.Buy_Transaction_Code = b.`A Buy Transaction`
+    AND b.source = 'GPMS'
+LEFT JOIN BS_Capline c
+    ON a.Buy_Transaction_Code = c.Buy_Transaction_Code
+    AND c.source = 'GPMS'
+LEFT JOIN BS_Interfinance d
+    ON a.Buy_Transaction_Code = d.Buy_Transaction_Code
+    AND d.source = 'GPMS'
+""")
 
 
 # =========================================================================
-# STEP 2  (was: /*Eliminate duplicates by Buy_transaction_code*/  data step)
+# STEP 2 — literal translation of:
+#   /*Eliminate duplicates by Buy_transaction_code*/
+#   data AssetDBEntry_inclBGAAP (drop=cnt);
+#   set AssetDBEntry_inclBGAAP;
+#   if cnt = 1 or cnt = 0 or (cnt = 2 and Quantity_accounting ne 0) then output;
 # =========================================================================
 
-asset_db_entry_inclBGAAP = (
-    asset_db_entry_inclBGAAP.filter(
-        (F.col("cnt") == 1)
-        | (F.col("cnt") == 0)
-        | ((F.col("cnt") == 2) & (F.col("Quantity_accounting") != 0))
-    )
-    .drop("cnt")
-)
+spark.sql("""
+CREATE OR REPLACE TEMP VIEW AssetDBEntry_inclBGAAP_dedup AS
+SELECT *
+FROM AssetDBEntry_inclBGAAP
+WHERE cnt = 1
+   OR cnt = 0
+   OR (cnt = 2 AND Quantity_accounting <> 0)
+""")
+
+# drop=cnt — Spark SQL has no "SELECT * EXCEPT(col)" guaranteed available
+# on every Synapse runtime, so the column list is built once in Python
+# and fed into a normal SQL SELECT (the only non-literal part of this
+# script — needed because plain SQL can't reference "all columns minus
+# these two" without naming the rest).
+dedup_cols = [c for c in spark.table("AssetDBEntry_inclBGAAP_dedup").columns if c != "cnt"]
+dedup_cols_sql = ", ".join(dedup_cols)
+
+spark.sql(f"""
+CREATE OR REPLACE TEMP VIEW AssetDBEntry_inclBGAAP_dedup AS
+SELECT {dedup_cols_sql}
+FROM AssetDBEntry_inclBGAAP_dedup
+""")
 
 
 # =========================================================================
-# STEP 3  (was: /*Forcing value for source different than GPMS*/ data step)
+# STEP 3 — literal translation of:
+#   /*Forcing value for source different than GPMS*/
+#   data AssetDBEntry_inclBGAAP_enriched;
+#   set AssetDBEntry_inclBGAAP;
+#   if missing(accounting_value_BGAAP) and source ne 'GPMS' then do;
+#       if lowcase(substr(assets_agr,1,5)) ne "fvoci" then do;
+#           accounting_value_BGAAP = accounting_value_IFRS;
+#       end;
+#       market_value_model = Solvency_II_value / Transparancy_Percentage;
+#       flg = 1;
+#   end;
+#   if missing(accrued_BGAAP) and source ne 'GPMS' then do;
+#       accrued_BGAAP = accrued;
+#   end;
 #
-# NOTE: in the original SAS, market_value_model and flg are only assigned
-# inside the OUTER if-block (they sit at the same indent level as the
-# inner if, i.e. outside it but inside the outer do/end). For rows that
-# don't satisfy the outer condition, these columns are left missing/null
-# — reproduced below the same way with F.when(...).otherwise(F.lit(None)).
+# Same column-list note as Step 2: accounting_value_BGAAP and
+# Accrued_BGAAP are being overwritten, so they're excluded from the
+# carried-forward column list and redefined explicitly via CASE below.
 # =========================================================================
 
-outer_cond = F.col("accounting_value_BGAAP").isNull() & (F.col("source") != "GPMS")
-inner_cond = F.lower(F.substring(F.col("assets_agr"), 1, 5)) != "fvoci"
-accrued_cond = F.col("Accrued_BGAAP").isNull() & (F.col("source") != "GPMS")
+enriched_other_cols = [
+    c for c in spark.table("AssetDBEntry_inclBGAAP_dedup").columns
+    if c not in ("accounting_value_BGAAP", "Accrued_BGAAP")
+]
+enriched_other_cols_sql = ", ".join(enriched_other_cols)
 
-asset_db_entry_inclBGAAP_enriched = (
-    asset_db_entry_inclBGAAP
-    .withColumn(
-        "accounting_value_BGAAP",
-        F.when(outer_cond & inner_cond, F.col("accounting_value_IFRS"))
-         .otherwise(F.col("accounting_value_BGAAP")),
-    )
-    .withColumn(
-        "market_value_model",
-        F.when(outer_cond, F.col("Solvency_II_value") / F.col("Transparancy_Percentage"))
-         .otherwise(F.lit(None)),
-    )
-    .withColumn(
-        "flg",
-        F.when(outer_cond, F.lit(1)).otherwise(F.lit(None)),
-    )
-    .withColumn(
-        "Accrued_BGAAP",
-        F.when(accrued_cond, F.col("accrued")).otherwise(F.col("Accrued_BGAAP")),
-    )
-)
+spark.sql(f"""
+CREATE OR REPLACE TEMP VIEW AssetDBEntry_inclBGAAP_enriched AS
+SELECT
+    {enriched_other_cols_sql},
+    CASE
+        WHEN accounting_value_BGAAP IS NULL
+             AND source <> 'GPMS'
+             AND LOWER(SUBSTRING(assets_agr, 1, 5)) <> 'fvoci'
+        THEN accounting_value_IFRS
+        ELSE accounting_value_BGAAP
+    END AS accounting_value_BGAAP,
+    CASE
+        WHEN accounting_value_BGAAP IS NULL AND source <> 'GPMS'
+        THEN Solvency_II_value / Transparancy_Percentage
+    END AS market_value_model,
+    CASE
+        WHEN accounting_value_BGAAP IS NULL AND source <> 'GPMS'
+        THEN 1
+    END AS flg,
+    CASE
+        WHEN Accrued_BGAAP IS NULL AND source <> 'GPMS'
+        THEN accrued
+        ELSE Accrued_BGAAP
+    END AS Accrued_BGAAP
+FROM AssetDBEntry_inclBGAAP_dedup
+""")
 
 
 # =========================================================================
-# STEP 4  (was: PROC EXPORT ... where=(flg=1) ... DBMS=XLSX)
-#
-# Spark has no native xlsx writer. Since this is a small "forced changes"
-# export, the simplest approach in a Synapse notebook is to filter, bring
-# the (small) result to the driver as pandas, and write it with openpyxl,
-# then move it to ADLS with mssparkutils. If the forced-changes set could
-# be large, swap to the spark-excel option commented below instead.
+# STEP 4 — literal translation of:
+#   PROC EXPORT DATA = AssetDBEntry_inclBGAAP_enriched (where=(flg = 1))
+#   OUTFILE = "..." DBMS = XLSX REPLACE;
 # =========================================================================
 
-forced_changes = asset_db_entry_inclBGAAP_enriched.filter(F.col("flg") == 1)
+forced_changes = spark.sql("""
+SELECT *
+FROM AssetDBEntry_inclBGAAP_enriched
+WHERE flg = 1
+""")
 
-# --- Option A: pandas/openpyxl (fine for small-to-medium result sets) ---
 import os
 
 local_tmp_path = f"/tmp/BGAAP_{THISRUN_REPORTING_DATE_NUM}.xlsx"
@@ -177,14 +178,3 @@ mssparkutils.fs.cp(f"file:{local_tmp_path}", output_file, True)  # True = overwr
 os.remove(local_tmp_path)
 
 print("Forced changes exported to:", output_file)
-
-# --- Option B: spark-excel library, if installed on the pool ----------
-# (use this instead of Option A for large result sets)
-#
-# (
-#     forced_changes.write
-#     .format("com.crealytics.spark.excel")
-#     .option("header", "true")
-#     .mode("overwrite")
-#     .save(output_file)
-# )
