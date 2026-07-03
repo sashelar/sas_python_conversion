@@ -1,0 +1,80 @@
+trigger: none  # manual trigger only
+
+parameters:
+  - name: THISRUN_ENVIRONMENT_ID
+    displayName: 'Please select an environment'
+    type: string
+    values:
+      - ENV_TEST
+      - BELINS_ENV_DEMO
+      - BELINS_ENV_PROD
+
+  - name: THISRUN_CONFIG_ID
+    displayName: 'Please select configuration'
+    type: string
+    values:
+      - CONFIG_BASE
+      - CONFIG_DEMO
+
+  - name: THISRUN_PERIOD_TO_CREATE_DATE
+    displayName: 'Please select a reporting date'
+    type: string
+    values:
+      - '2026-06-30'
+      - '2026-05-31'
+      - '2026-04-30'
+      - '2026-03-31'
+      - '2026-02-28'
+      - '2026-01-31'
+      - '2025-12-31'
+      - '2025-11-30'
+      - '2025-10-31'
+      - '2025-09-30'
+      - '2025-08-31'
+      - '2025-07-31'
+      - '2025-06-30'
+      - '2025-05-31'
+      - '2025-04-30'
+      - '2025-03-31'
+      - '2025-02-28'
+      - '2025-01-31'
+      - '2024-12-31'
+      - '2024-11-30'
+      - '2024-10-31'
+      - '2024-09-30'
+      - '2024-08-31'
+      - '2024-07-31'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Install Synapse CLI extension'
+    inputs:
+      azureSubscription: 'sc-arm-sub-spoke-dwph-gtu-001'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az extension add --name synapse --yes || az extension update --name synapse
+
+  - task: AzureCLI@2
+    displayName: 'Trigger Synapse Pipeline: data_import_pipeline'
+    inputs:
+      azureSubscription: 'sc-arm-sub-spoke-dwph-gtu-001'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        echo "Environment : ${{ parameters.THISRUN_ENVIRONMENT_ID }}"
+        echo "Config      : ${{ parameters.THISRUN_CONFIG_ID }}"
+        echo "Report Date : ${{ parameters.THISRUN_PERIOD_TO_CREATE_DATE }}"
+
+        az synapse pipeline create-run \
+          --workspace-name synw-insrisk-gtu-we-001 \
+          --resource-group rg-dwph-gtu-we-001 \
+          --name data_import_pipeline \
+          --parameters '{
+              "THISRUN_ENVIRONMENT_ID": "${{ parameters.THISRUN_ENVIRONMENT_ID }}",
+              "THISRUN_CONFIG_ID": "${{ parameters.THISRUN_CONFIG_ID }}",
+              "THISRUN_PERIOD_TO_CREATE_DATE": "${{ parameters.THISRUN_PERIOD_TO_CREATE_DATE }}"
+            }'
