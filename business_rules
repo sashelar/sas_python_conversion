@@ -1,0 +1,233 @@
+"""
+apply_business_rules.py
+
+PySpark / Azure Synapse equivalent of the SAS macro:
+
+    %macro Apply_Business_Rules (In_Impacted_Dataset=,
+                                  In_Business_Rule_Dataset=,
+                                  In_Business_Rule_Group=,
+                                  In_Filename_Path=,
+                                  Out_Ouput_Dataset=);
+
+WHY IT'S STRUCTURED THIS WAY
+-----------------------------
+The SAS macro works by dynamically WRITING SAS CODE to a fileref
+(Apply_BR / Apply_ex) and then %include-ing it, so the exact statements
+executed depend on the contents of the business-rule table at runtime.
+
+Spark has no safe/idiomatic equivalent of "generate code as text, then
+execute it" (doing that with exec() on untrusted rule text would be a
+code-injection risk). Instead, this version reads the same rule table and
+applies the same three rule types (DELETE, IF_THEN, IF_THEN_ELSE) directly
+via the DataFrame API, which is the standard way to do rule-driven
+transformations in Spark/Synapse.
+
+ASSUMPTIONS (please confirm/adjust against your real rule data)
+-----------------------------------------------------------------
+1. RULE_GROUP        - grouping column, matched case-insensitively (like
+                        `where upcase(RULE_GROUP)=upcase("&group")` in SAS).
+2. RULE_TYPE          - one of 'DELETE', 'IF_THEN', 'IF_THEN_ELSE'.
+3. RULE_DATA_SELECTION- a boolean condition string. In SAS this is raw SAS
+                        code (e.g. "AMOUNT > 1000"). Here it's passed to
+                        F.expr(), so it must be a valid Spark SQL
+                        expression. Simple comparisons/AND/OR are usually
+                        SAS/SQL-compatible as-is; more complex SAS
+                        functions (INPUT, PUT, INTNX, etc.) will need to be
+                        rewritten to their Spark SQL equivalents in the
+                        rule table.
+4. RULE_TO_APPLY / RULE_RETURN
+                      - semi-colon separated "column = expression"
+                        assignments, e.g. "STATUS = 'REJECTED'; FLAG = 1"
+                        (mirrors the free-text SAS statements that used to
+                        be dropped verbatim into the generated data step).
+5. RULE_VARIABLE_TYPE / RULE_VARIABLE_LENGTH / RULE_ID
+                      - used only for the initial LENGTH-style cast that
+                        the SAS macro emits for the first rule row.
+
+Exception capture ("CTX_EXC.<RULE_ID>" in SAS) is materialized here as a
+Spark temp view named "CTX_EXC_<RULE_ID>" plus a Python dict of DataFrames,
+so you can inspect/persist them however Synapse needs (Delta table, temp
+view, etc.).
+"""
+
+from typing import Dict, Optional
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+
+
+def _parse_assignments(rule_text: Optional[str]) -> Dict[str, str]:
+    """
+    Splits a ';'-separated list of "column = expression" statements
+    (as stored in RULE_TO_APPLY / RULE_RETURN) into {column: expression}.
+
+    Example:
+        "STATUS = 'REJECTED'; FLAG = 1"  ->  {"STATUS": "'REJECTED'", "FLAG": "1"}
+    """
+    assignments: Dict[str, str] = {}
+    if not rule_text:
+        return assignments
+    for stmt in rule_text.split(";"):
+        stmt = stmt.strip()
+        if not stmt or "=" not in stmt:
+            continue
+        col_name, expr_str = stmt.split("=", 1)
+        assignments[col_name.strip()] = expr_str.strip()
+    return assignments
+
+
+def apply_business_rules(
+    spark: SparkSession,
+    in_impacted_df: DataFrame,
+    in_business_rule_df: DataFrame,
+    in_business_rule_group: str,
+    out_table_name: Optional[str] = None,
+) -> DataFrame:
+    """
+    Apply DELETE / IF_THEN / IF_THEN_ELSE business rules to a DataFrame.
+
+    Parameters
+    ----------
+    spark : SparkSession
+    in_impacted_df : DataFrame
+        Equivalent of &In_Impacted_Dataset. The data the rules are applied to.
+    in_business_rule_df : DataFrame
+        Equivalent of &In_Business_Rule_Dataset. Must contain columns:
+        RULE_ID, RULE_GROUP, RULE_TYPE, RULE_DATA_SELECTION,
+        RULE_TO_APPLY, RULE_RETURN, RULE_VARIABLE_TYPE, RULE_VARIABLE_LENGTH.
+    in_business_rule_group : str
+        Equivalent of &In_Business_Rule_Group. Rules are filtered to this
+        group (case-insensitive).
+    out_table_name : str, optional
+        If given, the result is written with saveAsTable (equivalent of
+        &Out_Ouput_Dataset). If omitted, the resulting DataFrame is just
+        returned (matching the SAS default of reusing In_Impacted_Dataset
+        as the output name when Out_Ouput_Dataset is blank).
+
+    Returns
+    -------
+    DataFrame with all rules for the given group applied.
+    """
+
+    # ---- 1. Filter rule table to the requested group (case-insensitive) ----
+    rules_df = in_business_rule_df.filter(
+        F.upper(F.col("RULE_GROUP")) == in_business_rule_group.upper()
+    )
+    rules = rules_df.collect()  # rule tables are small metadata -> safe to collect
+
+    working_df = in_impacted_df
+    exception_views: Dict[str, DataFrame] = {}
+
+    # ---- 2. Initial LENGTH-style cast (mirrors the first-row "length" stmt) ----
+    if rules:
+        first = rules[0]
+        var_type = (first["RULE_VARIABLE_TYPE"] or "").upper()
+        if var_type and first["RULE_TYPE"] in ("IF_THEN", "IF_THEN_ELSE"):
+            col_name = first["RULE_GROUP"]
+            if col_name in working_df.columns:
+                if var_type == "CHARACTER":
+                    length = int(first["RULE_VARIABLE_LENGTH"])
+                    working_df = working_df.withColumn(
+                        col_name, F.col(col_name).cast(f"varchar({length})")
+                    )
+                elif var_type == "NUMERIC":
+                    working_df = working_df.withColumn(
+                        col_name, F.col(col_name).cast("double")
+                    )
+
+    # ---- 3. DELETE rules: capture exceptions, then remove matched rows ----
+    for row in rules:
+        rule_type = (row["RULE_TYPE"] or "").upper()
+        if rule_type != "DELETE":
+            continue
+
+        rule_id = row["RULE_ID"]
+        condition = row["RULE_DATA_SELECTION"]
+        exc_name = f"CTX_EXC_{rule_id}"
+
+        exception_df = working_df.filter(F.expr(condition))
+        exception_views[exc_name] = exception_df
+        exception_df.createOrReplaceTempView(exc_name)
+
+        # equivalent of "if (condition) then delete;"
+        working_df = working_df.filter(~F.expr(condition))
+
+    # ---- 4. IF_THEN / IF_THEN_ELSE rules ----
+    for row in rules:
+        rule_type = (row["RULE_TYPE"] or "").upper()
+        condition = row["RULE_DATA_SELECTION"]
+
+        if rule_type == "IF_THEN":
+            assignments = _parse_assignments(row["RULE_TO_APPLY"])
+            for col_name, expr_str in assignments.items():
+                existing = (
+                    F.col(col_name) if col_name in working_df.columns else F.lit(None)
+                )
+                working_df = working_df.withColumn(
+                    col_name,
+                    F.when(F.expr(condition), F.expr(expr_str)).otherwise(existing),
+                )
+
+        elif rule_type == "IF_THEN_ELSE":
+            then_assignments = _parse_assignments(row["RULE_TO_APPLY"])
+            else_assignments = _parse_assignments(row["RULE_RETURN"])
+            all_cols = set(then_assignments) | set(else_assignments)
+
+            for col_name in all_cols:
+                then_expr = then_assignments.get(col_name)
+                else_expr = else_assignments.get(col_name)
+                existing = (
+                    F.col(col_name) if col_name in working_df.columns else F.lit(None)
+                )
+                then_col = F.expr(then_expr) if then_expr else existing
+                else_col = F.expr(else_expr) if else_expr else existing
+
+                working_df = working_df.withColumn(
+                    col_name, F.when(F.expr(condition), then_col).otherwise(else_col)
+                )
+
+    # ---- 5. Persist output (equivalent of the final data &Out_Ouput_Dataset step) ----
+    if out_table_name:
+        working_df.write.mode("overwrite").saveAsTable(out_table_name)
+
+    return working_df
+
+
+# ---------------------------------------------------------------------------
+# Example usage in a Synapse notebook
+#
+# Mirrors the real-world call pattern: the same dataset is threaded through
+# the function once per rule group, each call using the previous call's
+# output as its input (equivalent to the chained
+# %Apply_Business_Rules(In_Impacted_Dataset=X, ..., Out_Ouput_Dataset=X)
+# calls, where X is reused as both In_Impacted_Dataset and
+# Out_Ouput_Dataset each time).
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    spark = SparkSession.builder.getOrCreate()
+
+    rules_df = spark.table("dbo.BUSINESS_RULES")
+    assets_liabilities_enriched = spark.table("dbo.Assets_Liabilities_enriched")
+
+    rule_groups = [
+        "Investment_Category_Solvency",
+        "Participation_Risk_Strat_NStrat",
+        "Infrastructure_type",
+        "ALMRiskCards_Category_1",
+        "ALMRiskCards_Category_2",
+    ]
+
+    # Chain: each rule group is applied to the result of the previous one,
+    # just like the five sequential %Apply_Business_Rules calls in SAS.
+    for group in rule_groups:
+        assets_liabilities_enriched = apply_business_rules(
+            spark=spark,
+            in_impacted_df=assets_liabilities_enriched,
+            in_business_rule_df=rules_df,
+            in_business_rule_group=group,
+        )
+
+    # Persist the final result once, after all rule groups have been applied
+    # (cheaper than overwriting a table after every intermediate step).
+    assets_liabilities_enriched.write.mode("overwrite").saveAsTable(
+        "dbo.Assets_Liabilities_enriched"
+    )
