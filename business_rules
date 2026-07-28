@@ -50,28 +50,99 @@ so you can inspect/persist them however Synapse needs (Delta table, temp
 view, etc.).
 """
 
+import re
 from typing import Dict, Optional
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 
+# ---------------------------------------------------------------------------
+# SAS -> Spark SQL expression translation
+#
+# The rule table (business_rules.xlsx) stores RULE_DATA_SELECTION /
+# RULE_TO_APPLY / RULE_RETURN as raw SAS boolean/assignment expressions,
+# e.g.:
+#   Solvency_alt_act_new="R0060" or Solvency_alt_act_new="R0080"
+#   CIC_POS_2_CD="44" and not missing(Instrument_Master)
+#   BSM_split ne "Fonds Obligataires"
+#
+# Passed straight to F.expr(), these fail because:
+#   - SAS uses word operators (NE, EQ, GT, LT, GE, LE) that aren't valid
+#     Spark SQL operators
+#   - SAS uses double-quoted string literals; Spark SQL treats double
+#     quotes as identifiers/columns, not strings, so "R0060" is parsed as
+#     a column reference and blows up
+#   - missing(col) is a SAS function with no Spark SQL equivalent
+#
+# translate_sas_expression() rewrites these to valid Spark SQL before the
+# string ever reaches F.expr(). AND / OR / NOT / IN / comparisons like
+# "=", ">", "<=" are valid in both SAS and Spark SQL, so they pass through
+# unchanged.
+# ---------------------------------------------------------------------------
+
+_SAS_OPERATOR_MAP = {
+    r"\bne\b": "!=",
+    r"\beq\b": "=",
+    r"\bgt\b": ">",
+    r"\blt\b": "<",
+    r"\bge\b": ">=",
+    r"\ble\b": "<=",
+}
+
+_MISSING_FN_PATTERN = re.compile(
+    r"missing\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)", re.IGNORECASE
+)
+
+_DOUBLE_QUOTED_STRING_PATTERN = re.compile(r'"([^"]*)"')
+
+
+def translate_sas_expression(expr: Optional[str]) -> Optional[str]:
+    """
+    Rewrites a SAS-flavoured condition/assignment string into valid Spark
+    SQL, so it can be safely passed to F.expr().
+
+    - missing(col)   -> (col IS NULL OR col = '')
+    - NE / EQ / GT / LT / GE / LE  -> != / = / > / < / >= / <=
+    - "text"         -> 'text'   (SAS double-quoted strings -> SQL single-quoted)
+    """
+    if expr is None:
+        return None
+    e = str(expr).strip()
+
+    # missing(col) -> null-or-empty check (do this before quote conversion,
+    # since it doesn't involve string literals itself)
+    e = _MISSING_FN_PATTERN.sub(r"(\1 IS NULL OR \1 = '')", e)
+
+    # word-style comparison operators
+    for pattern, replacement in _SAS_OPERATOR_MAP.items():
+        e = re.sub(pattern, replacement, e, flags=re.IGNORECASE)
+
+    # double-quoted string literals -> single-quoted, escaping any embedded '
+    e = _DOUBLE_QUOTED_STRING_PATTERN.sub(
+        lambda m: "'" + m.group(1).replace("'", "''") + "'", e
+    )
+
+    return e
+
+
 def _parse_assignments(rule_text: Optional[str]) -> Dict[str, str]:
     """
     Splits a ';'-separated list of "column = expression" statements
-    (as stored in RULE_TO_APPLY / RULE_RETURN) into {column: expression}.
+    (as stored in RULE_TO_APPLY / RULE_RETURN) into {column: expression},
+    translating each expression from SAS syntax to Spark SQL.
 
     Example:
-        "STATUS = 'REJECTED'; FLAG = 1"  ->  {"STATUS": "'REJECTED'", "FLAG": "1"}
+        'STATUS="REJECTED"; FLAG=1'  ->  {"STATUS": "'REJECTED'", "FLAG": "1"}
     """
     assignments: Dict[str, str] = {}
     if not rule_text:
         return assignments
-    for stmt in rule_text.split(";"):
+    for stmt in str(rule_text).split(";"):
         stmt = stmt.strip()
         if not stmt or "=" not in stmt:
             continue
         col_name, expr_str = stmt.split("=", 1)
-        assignments[col_name.strip()] = expr_str.strip()
+        assignments[col_name.strip()] = translate_sas_expression(expr_str.strip())
     return assignments
 
 
@@ -109,8 +180,12 @@ def apply_business_rules(
     """
 
     # ---- 1. Filter rule table to the requested group (case-insensitive) ----
+    # Trimmed on both sides: the source rule table has duplicate RULE_GROUP
+    # values that differ only by trailing whitespace (e.g.
+    # "ALMRiskCards_Category_1" vs "ALMRiskCards_Category_1  "), which would
+    # otherwise silently drop rules from the match.
     rules_df = in_business_rule_df.filter(
-        F.upper(F.col("RULE_GROUP")) == in_business_rule_group.upper()
+        F.upper(F.trim(F.col("RULE_GROUP"))) == in_business_rule_group.strip().upper()
     )
     rules = rules_df.collect()  # rule tables are small metadata -> safe to collect
 
@@ -141,7 +216,7 @@ def apply_business_rules(
             continue
 
         rule_id = row["RULE_ID"]
-        condition = row["RULE_DATA_SELECTION"]
+        condition = translate_sas_expression(row["RULE_DATA_SELECTION"])
         exc_name = f"CTX_EXC_{rule_id}"
 
         exception_df = working_df.filter(F.expr(condition))
@@ -154,7 +229,7 @@ def apply_business_rules(
     # ---- 4. IF_THEN / IF_THEN_ELSE rules ----
     for row in rules:
         rule_type = (row["RULE_TYPE"] or "").upper()
-        condition = row["RULE_DATA_SELECTION"]
+        condition = translate_sas_expression(row["RULE_DATA_SELECTION"])
 
         if rule_type == "IF_THEN":
             assignments = _parse_assignments(row["RULE_TO_APPLY"])
