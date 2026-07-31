@@ -1,0 +1,238 @@
+"""
+asset_dbentry_enrichment.py
+
+PySpark / Azure Synapse equivalent of a 3-step SAS program that enriches
+AssetDBEntry_Conso_enriched with portfolio and fund_code information:
+
+    1. PROC SQL: left-join PORTFOLIO_TABLE and FUND_CODE_TABLE onto the
+       asset table, matched on upcase(AFFECTATION).
+    2. "special treatment for cash": for cash-like rows (specific
+       CIC_POS_2_CD codes, or AFFECTATION='FIN_OTHER'), override the
+       `portfolio` value based on ALM_segment_orig, using one mapping
+       before 2023-06-30 and a slightly different mapping from that date
+       onward (BELINS FINANCE moves from the GENERAL group to the
+       NON-LIFE group at the cutover).
+    3. "trial of repartition based on final ALM segment": a static
+       ALM_segment -> portfolio_almsegm lookup table.
+
+Each SAS step is one function below; enrich_asset_dbentry() runs them in
+the same order as the original program.
+
+ASSUMPTIONS (please confirm/adjust against your real data)
+-------------------------------------------------------------
+1. PORTFOLIO_TABLE / FUND_CODE_TABLE are expected to have at most one row
+   per (case-insensitive) AFFECTATION value. If a lookup table has
+   duplicate AFFECTATION values, the join will fan out rows -- exactly
+   like the equivalent SAS PROC SQL join would.
+2. `reporting_date` is a Spark DateType/TimestampType column (mdy(06,30,2023)
+   in SAS -> Python date(2023, 6, 30) here).
+3. Column names are carried over as-is (CIC_POS_2_CD, affectation,
+   ALM_segment_orig, ALM_segment, portfolio, portfolio_almsegm, fund_code).
+   Spark is case-insensitive for column names by default, so
+   `affectation` vs `AFFECTATION` in the source doesn't need special
+   handling, but adjust the literals below if your real schema differs.
+4. Rows with no match in the final ALM_segment mapping get
+   portfolio_almsegm = NULL, matching the SAS `else;` (empty else, which
+   leaves the variable missing).
+"""
+
+from typing import Dict, List, Optional
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+
+
+# ---------------------------------------------------------------------------
+# Step 2 lookup tables (extracted from the nested SAS SELECT/WHEN blocks)
+# ---------------------------------------------------------------------------
+
+# Cutover date: BELINS FINANCE is grouped with GENERAL before this date,
+# and with NON-LIFE from this date onward.
+CASH_TREATMENT_CUTOFF_DATE = "2023-06-30"
+
+CASH_PORTFOLIO_GROUPS_PRE_CUTOFF: Dict[str, List[str]] = {
+    "GENERAL": ["BELINS FREE", "AUXIPAR", "CAPLINE", "INTERFINANCE", "BELINS FINANCE"],
+    "NON-LIFE": ["CORONA NIET LEVEN", "ACTIVITY", "BELINS NON LIFE"],
+}
+
+CASH_PORTFOLIO_GROUPS_POST_CUTOFF: Dict[str, List[str]] = {
+    "GENERAL": ["BELINS FREE", "AUXIPAR", "CAPLINE", "INTERFINANCE"],
+    "NON-LIFE": ["CORONA NIET LEVEN", "ACTIVITY", "BELINS NON LIFE", "BELINS FINANCE"],
+}
+
+CASH_PORTFOLIO_DEFAULT = "LIFE"  # SAS `otherwise portfolio = "LIFE";`
+
+CIC_POS_2_CD_CASH_CODES = ["71", "72", "73", "79", "75"]
+
+
+# ---------------------------------------------------------------------------
+# Step 3 lookup table (static ALM_segment -> portfolio_almsegm mapping)
+# ---------------------------------------------------------------------------
+
+ALM_SEGMENT_TO_PORTFOLIO: Dict[str, str] = {
+    "BELINS NON LIFE": "NON-LIFE",
+    "BELINS B23": "LIFE",
+    "BELINS CLASSIC LIFE GROUP": "LIFE",
+    "BELINS CLASSIC LIFE IND": "LIFE",
+    "BELINS FIN LIFE GROUP": "LIFE",
+    "BELINS FREE": "GENERAL",
+    "BELINS LIFE RETAIL FIN": "LIFE",
+    "BELINS MULTI EMPLOYERS FUND": "LIFE",
+    "BELINS NBB": "LIFE",
+    "BELINS PROV LIMBURG": "LIFE",
+    "BELINS SEF PENSION": "LIFE",
+    "BELINS SEF SOLIDARITY": "LIFE",
+    "BELINS VVSG": "LIFE",
+    "BELINS LIFE HO": "LIFE",
+    "BELINS LIFE ENDO": "LIFE",
+    "BELINS LIFE INSU": "LIFE",
+    "BELINS LIFE INVL": "LIFE",
+    "BELINS LIFE INVS": "LIFE",
+    "CORONA NIET LEVEN": "NON-LIFE",
+    "CORONA LEVEN": "LIFE",
+}
+
+
+# ---------------------------------------------------------------------------
+# Step 1: PROC SQL lookup join
+# ---------------------------------------------------------------------------
+
+def join_portfolio_and_fund_code(
+    asset_df: DataFrame,
+    portfolio_table_df: DataFrame,
+    fund_code_table_df: DataFrame,
+) -> DataFrame:
+    """
+    Equivalent of:
+
+        create table AssetDBEntry_Conso_enriched as
+        select a.*, b.portfolio, c.fund_code
+        from AssetDBEntry_Conso_enriched a
+        left outer join PORTFOLIO_TABLE b  on upcase(a.AFFECTATION)=upcase(b.AFFECTATION)
+        left outer join FUND_CODE_TABLE c  on upcase(a.AFFECTATION)=upcase(c.AFFECTATION);
+    Idempotent: if `portfolio` or `fund_code` already exist on asset_df
+    (e.g. this function is being re-run on previously enriched data, which
+    is plausible since the SAS source/target table share the same name),
+    they are dropped first. SAS's `select a.*, b.portfolio` would silently
+    tolerate re-adding the column; Spark raises AMBIGUOUS_REFERENCE on the
+    resulting duplicate column name if we don't drop it first.
+    """
+    df = asset_df.drop("portfolio", "fund_code")
+    df = df.withColumn("_affectation_key", F.upper(F.trim(F.col("AFFECTATION"))))
+
+    portfolio_lookup = portfolio_table_df.select(
+        F.upper(F.trim(F.col("AFFECTATION"))).alias("_affectation_key"),
+        F.col("portfolio"),
+    )
+    fund_code_lookup = fund_code_table_df.select(
+        F.upper(F.trim(F.col("AFFECTATION"))).alias("_affectation_key"),
+        F.col("fund_code"),
+    )
+
+    df = df.join(portfolio_lookup, on="_affectation_key", how="left")
+    df = df.join(fund_code_lookup, on="_affectation_key", how="left")
+    df = df.drop("_affectation_key")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Step 2: special treatment for cash
+# ---------------------------------------------------------------------------
+
+def _segment_group_lookup(col, groups: Dict[str, List[str]], default: str):
+    """
+    Builds a nested F.when() expression equivalent to a SAS
+    `select; when (col in (...)) result=...; ... otherwise result=default; end;`
+    block, evaluated top-to-bottom like the original SELECT/WHEN.
+    """
+    expr = F.lit(default)
+    for result_value, keys in reversed(list(groups.items())):
+        expr = F.when(col.isin(*keys), F.lit(result_value)).otherwise(expr)
+    return expr
+
+
+def apply_cash_special_treatment(df: DataFrame) -> DataFrame:
+    """
+    Equivalent of the "special treatment for cash" data step: overrides
+    `portfolio` for cash-like rows based on ALM_segment_orig, using a
+    different grouping before/after CASH_TREATMENT_CUTOFF_DATE. Rows that
+    don't meet the cash condition keep whatever `portfolio` the lookup
+    join produced.
+    """
+    is_cash_row = F.col("CIC_POS_2_CD").isin(*CIC_POS_2_CD_CASH_CODES) | (
+        F.col("affectation") == "FIN_OTHER"
+    )
+    is_pre_cutoff = F.col("reporting_date") < F.to_date(F.lit(CASH_TREATMENT_CUTOFF_DATE))
+
+    pre_cutoff_portfolio = _segment_group_lookup(
+        F.col("ALM_segment_orig"), CASH_PORTFOLIO_GROUPS_PRE_CUTOFF, CASH_PORTFOLIO_DEFAULT
+    )
+    post_cutoff_portfolio = _segment_group_lookup(
+        F.col("ALM_segment_orig"), CASH_PORTFOLIO_GROUPS_POST_CUTOFF, CASH_PORTFOLIO_DEFAULT
+    )
+
+    cash_portfolio = F.when(is_pre_cutoff, pre_cutoff_portfolio).otherwise(
+        post_cutoff_portfolio
+    )
+
+    return df.withColumn(
+        "portfolio",
+        F.when(is_cash_row, cash_portfolio).otherwise(F.col("portfolio")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 3: trial of repartition based on final ALM segment
+# ---------------------------------------------------------------------------
+
+def apply_alm_segment_portfolio_mapping(df: DataFrame) -> DataFrame:
+    """
+    Equivalent of the final `if ALM_segment=... then portfolio_almsegm=...`
+    chain: a static, exact-match lookup from ALM_segment to
+    portfolio_almsegm. Unmatched values get NULL (matching SAS's `else;`).
+    """
+    mapping_expr = F.create_map(
+        [F.lit(x) for pair in ALM_SEGMENT_TO_PORTFOLIO.items() for x in pair]
+    )
+    return df.withColumn("portfolio_almsegm", mapping_expr[F.col("ALM_segment")])
+
+
+# ---------------------------------------------------------------------------
+# Orchestration: run all three steps in the same order as the SAS program
+# ---------------------------------------------------------------------------
+
+def enrich_asset_dbentry(
+    spark: SparkSession,
+    asset_df: DataFrame,
+    portfolio_table_df: DataFrame,
+    fund_code_table_df: DataFrame,
+    out_table_name: Optional[str] = None,
+) -> DataFrame:
+    df = join_portfolio_and_fund_code(asset_df, portfolio_table_df, fund_code_table_df)
+    df = apply_cash_special_treatment(df)
+    df = apply_alm_segment_portfolio_mapping(df)
+
+    if out_table_name:
+        df.write.mode("overwrite").saveAsTable(out_table_name)
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Example usage in a Synapse notebook
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    spark = SparkSession.builder.getOrCreate()
+
+    asset_df = spark.table("dbo.AssetDBEntry_Conso_enriched")
+    portfolio_table_df = spark.table("dbo.PORTFOLIO_TABLE")
+    fund_code_table_df = spark.table("dbo.FUND_CODE_TABLE")
+
+    enriched_df = enrich_asset_dbentry(
+        spark=spark,
+        asset_df=asset_df,
+        portfolio_table_df=portfolio_table_df,
+        fund_code_table_df=fund_code_table_df,
+        out_table_name="dbo.AssetDBEntry_Conso_enriched",
+    )
+
+    enriched_df.show(20, truncate=False)
