@@ -1,0 +1,622 @@
+# =====================================================================================
+# B_ASSETS_14_Limit_Monitoring_Report  -  continuation of your PySpark code
+# starts right after: compute_spreadlocks.createOrReplaceTempView("compute_spreadlocks")
+# =====================================================================================
+#
+# Assumptions (same style as the code you already wrote):
+#   - THISRUN_REPORTING_DATE is already defined in your notebook as a string 'yyyy-MM-dd'
+#     (SAS macro var &THISRUN_REPORTING_DATE.)
+#   - the reference tables below already exist as tables / temp views. If they are already
+#     loaded earlier in your notebook you can delete this block.
+#
+from pyspark.sql.window import Window
+
+# THISRUN_REPORTING_DATE = "2025-12-31"     # <- your existing variable
+
+DEFAULT_PROBABILITY      = spark.table("DEFAULT_PROBABILITY")
+Country_Limits           = spark.table("Country_Limits")
+Sovereign_Limits         = spark.table("Sovereign_Limits")
+RATING_ISSUER_Limits     = spark.table("RATING_ISSUER_Limits")
+SECTOR_DIVERSIFICATION   = spark.table("SECTOR_DIVERSIFICATION")
+ultimate_parent_limits   = spark.table("ultimate_parent_limits")
+FUNDS_LIMITS             = spark.table("FUNDS_LIMITS")
+other_bonds_limits       = spark.table("other_bonds_limits")
+Assets_Liabilities       = spark.table("OUT_MPT.Assets_Liabilities")
+
+Country_Limits.createOrReplaceTempView("Country_Limits")
+Sovereign_Limits.createOrReplaceTempView("Sovereign_Limits")
+RATING_ISSUER_Limits.createOrReplaceTempView("RATING_ISSUER_Limits")
+SECTOR_DIVERSIFICATION.createOrReplaceTempView("SECTOR_DIVERSIFICATION")
+ultimate_parent_limits.createOrReplaceTempView("ultimate_parent_limits")
+FUNDS_LIMITS.createOrReplaceTempView("FUNDS_LIMITS")
+other_bonds_limits.createOrReplaceTempView("other_bonds_limits")
+Assets_Liabilities.createOrReplaceTempView("Assets_Liabilities")
+
+
+# -------------------------------------------------------------------------------------
+# data work.compute_spreadlocks_2
+# spreadlock_coverage = sum(0, quantity_accounting / quantity_exposure)  -> 0 if missing
+# -------------------------------------------------------------------------------------
+compute_spreadlocks_2 = compute_spreadlocks.withColumn(
+    "spreadlock_coverage",
+    F.coalesce(F.col("quantity_accounting") / F.col("quantity_exposure"), F.lit(0))
+)
+compute_spreadlocks_2.createOrReplaceTempView("compute_spreadlocks_2")
+
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	t1.*,
+            t2.spreadlock_coverage
+    from AssetDBEntry_Conso_enriched t1
+    left outer join compute_spreadlocks_2 t2
+    on t1.Entity_ID = t2.Entity_ID
+    and t1.ALM_segment = t2.ALM_segment
+    and t1.Assets_agr = t2.Asset_Master
+    and t1.Isin_agr = t2.Asset_Master_ISIN
+""")
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "RAT_INT_DUR_TIMES_IFRS_BV_NOSL", F.col("RATING_FAC_INT_DUR_TIMES_IFRS_BV")
+)
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "RATING_FAC_INT_DUR_TIMES_IFRS_BV",
+    F.when(
+        F.col("spreadlock_coverage").isNotNull(),
+        (F.lit(1) - F.col("spreadlock_coverage")) * F.col("RATING_FAC_INT_DUR_TIMES_IFRS_BV")
+    ).otherwise(F.col("RATING_FAC_INT_DUR_TIMES_IFRS_BV"))
+)
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.drop("spreadlock_coverage")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+
+# -------------------------------------------------------------------------------------
+# SDT calculations
+# NB: in SAS, sum(0, volume_avg_1M * 0.3) has 2 arguments -> it is the ROW level sum
+#     function (not an aggregate), so it is kept as an attribute of the asset here.
+# -------------------------------------------------------------------------------------
+SDT = spark.sql("""
+    select distinct Entity_ID, Instrument_Lmt, Assets_code_agr, Issuer,
+            sum(Investment_SII_Value) as market_value,
+            coalesce(max(volume_avg_1M) * 0.3, 0) as volume_avg_1M,
+            sum(Quantity_Accounting) as quantity
+    from AssetDBEntry_Conso_enriched
+    where Instrument_Lmt in ('Equities-listed', 'Equities-unlisted', 'Investment Funds Shares Part')
+    group by 1,2,3,4
+""")
+SDT.createOrReplaceTempView("SDT")
+
+SDT_ALL = SDT.withColumn("price_per_action", F.col("market_value") / F.col("quantity"))
+
+# select liquid quantity
+SDT_ALL = SDT_ALL.withColumn(
+    "liquid_quantity",
+    F.when(F.col("volume_avg_1M") * 7 > F.col("quantity"), F.col("quantity"))
+     .otherwise(F.col("volume_avg_1M") * 7)
+)
+# select under watch quantity
+SDT_ALL = SDT_ALL.withColumn(
+    "underwatch_quantity",
+    F.when(F.col("liquid_quantity") == F.col("quantity"), F.lit(0))
+     .when((F.col("quantity") - F.col("liquid_quantity")) < (F.col("volume_avg_1M") * 0),
+           F.col("quantity") - F.col("liquid_quantity"))
+     .otherwise(F.col("volume_avg_1M") * 0)
+)
+# select illiquid quantity
+SDT_ALL = SDT_ALL.withColumn(
+    "illiquid_quantity",
+    F.col("quantity") - F.col("underwatch_quantity") - F.col("liquid_quantity")
+)
+# Market Value for the liquidity assessment quantity
+SDT_ALL = SDT_ALL.withColumn("Liquid_MV",     F.col("price_per_action") * F.col("liquid_quantity"))
+SDT_ALL = SDT_ALL.withColumn("Illiquid_MV",   F.col("price_per_action") * F.col("illiquid_quantity"))
+SDT_ALL = SDT_ALL.withColumn("Underwatch_MV", F.col("price_per_action") * F.col("underwatch_quantity"))
+SDT_ALL.createOrReplaceTempView("SDT_ALL")
+
+SDT_ALL_FULL = spark.sql("""
+    select Entity_ID,
+            sum(Liquid_MV)/1000000 as Liquid,
+            sum(Illiquid_MV)/1000000 as Illiquid,
+            sum(Underwatch_MV)/1000000 as Under_watch
+    from SDT_ALL
+    group by Entity_ID
+""")
+
+SDT_ALL_LISTED = spark.sql("""
+    select Entity_ID,
+            sum(Liquid_MV)/1000000 as Liquid,
+            sum(Illiquid_MV)/1000000 as Illiquid,
+            sum(Underwatch_MV)/1000000 as Under_watch
+    from SDT_ALL
+    where Instrument_Lmt = 'Equities-listed'
+    group by Entity_ID
+""")
+
+# proc transpose by Entity_ID -> one row per liquidity_assessment
+SDT_ALL_FULL_TR = SDT_ALL_FULL.selectExpr(
+    "Entity_ID",
+    "stack(3, 'Liquid', Liquid, 'Illiquid', Illiquid, 'Under_watch', Under_watch) as (liquidity_assessment, SDT_Value)"
+)
+SDT_ALL_LISTED_TR = SDT_ALL_LISTED.selectExpr(
+    "Entity_ID",
+    "stack(3, 'Liquid', Liquid, 'Illiquid', Illiquid, 'Under_watch', Under_watch) as (liquidity_assessment, SDT_Value)"
+)
+
+SDT = SDT_ALL_FULL_TR.withColumn("reporting_date", F.lit(THISRUN_REPORTING_DATE).cast("date"))
+SDT.write.mode("overwrite").saveAsTable("OUT_LM.SDT")
+
+SDT_LISTED = SDT_ALL_LISTED_TR.withColumn("reporting_date", F.lit(THISRUN_REPORTING_DATE).cast("date"))
+SDT_LISTED.createOrReplaceTempView("SDT_LISTED")
+# End SDT calculation
+
+# -------------------------------------------------------------------------------------
+# Allocate the SDT market values back on the asset level
+# -------------------------------------------------------------------------------------
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	a.*,
+            (a.Quantity_Accounting/b.quantity) * b.Liquid_MV as LIQUID_MV,
+            (a.Quantity_Accounting/b.quantity) * b.Illiquid_MV as ILLIQUID_MV,
+            (a.Quantity_Accounting/b.quantity) * b.Underwatch_MV as UNDERWATCH_MV
+    from AssetDBEntry_Conso_enriched a
+    left outer join SDT_ALL b
+    on a.Entity_ID = b.Entity_ID
+    and a.Assets_code_agr = b.Assets_code_agr
+""")
+
+instrument_lmt_liq_list = ["Bonds Part", "Investment Funds Bonds Part", "Investment Funds Shares Part",
+                           "Loans & mortgages to individuals", "Loans on policies",
+                           "Loans Part", "Strategic Participation Part"]
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "LIQUID_MV",
+    F.when(F.col("Instrument_lmt").isin(instrument_lmt_liq_list),
+           F.col("Investment_SII_Value") * F.coalesce((F.col("Liquidity_Assessment") == "Liquid").cast("int"), F.lit(0)))
+     .when(F.col("Instrument_lmt") == "Cash and cash equivalents Part", F.col("Investment_SII_Value"))
+     .otherwise(F.col("LIQUID_MV"))
+)
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "ILLIQUID_MV",
+    F.when(F.col("Instrument_lmt").isin(instrument_lmt_liq_list),
+           F.col("Investment_SII_Value") * F.coalesce((F.col("Liquidity_Assessment") == "Illiquid").cast("int"), F.lit(0)))
+     .when(F.col("Instrument_lmt") == "Properties", F.col("Investment_SII_Value"))
+     .otherwise(F.col("ILLIQUID_MV"))
+)
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+
+# -------------------------------------------------------------------------------------
+# Add country, sovereign, rating ultimate parent and limits
+# -------------------------------------------------------------------------------------
+# take the latest limit by period and country
+Country_Limits = spark.sql(f"""
+    select * from (
+        select a.*, max(REPORTING_DATE) over (partition by COUNTRY_NAME) as max_reporting_date
+        from Country_Limits a
+    )
+    where REPORTING_DATE = date('{THISRUN_REPORTING_DATE}') or REPORTING_DATE = max_reporting_date
+""").drop("max_reporting_date")
+Country_Limits.createOrReplaceTempView("Country_Limits")
+
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	a.*,
+            b.Limits_CNTR as Country_lmt
+    from AssetDBEntry_Conso_enriched a
+    left outer join Country_Limits b
+    on upper(a.Country_of_Risk) = b.Country_Name
+""")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+# take the latest limit by period and sovereign
+Sovereign_Limits = spark.sql(f"""
+    select * from (
+        select a.*, max(REPORTING_DATE) over (partition by SOVEREIGN) as max_reporting_date
+        from Sovereign_Limits a
+    )
+    where REPORTING_DATE = date('{THISRUN_REPORTING_DATE}') or REPORTING_DATE = max_reporting_date
+""").drop("max_reporting_date")
+Sovereign_Limits.createOrReplaceTempView("Sovereign_Limits")
+
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	a.*,
+            b.Limits_SVRG as sovereign_lmt
+    from AssetDBEntry_Conso_enriched a
+    left outer join Sovereign_Limits b
+    on upper(a.Country_of_Risk) = b.Sovereign
+""")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+# take the latest limit by period and rating issuer
+RATING_ISSUER_Limits = spark.sql(f"""
+    select * from (
+        select a.*, max(REPORTING_DATE) over (partition by RATING_ULTIMATE_PARENT_RISK) as max_reporting_date
+        from RATING_ISSUER_Limits a
+    )
+    where REPORTING_DATE = date('{THISRUN_REPORTING_DATE}') or REPORTING_DATE = max_reporting_date
+""").drop("max_reporting_date")
+RATING_ISSUER_Limits.createOrReplaceTempView("RATING_ISSUER_Limits")
+
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	a.*,
+            b.LIMITS_ISSUER
+    from AssetDBEntry_Conso_enriched a
+    left outer join RATING_ISSUER_Limits b
+    on a.Rating_Ultimate_Parent_Risk = b.RATING_ULTIMATE_PARENT_RISK
+""")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+# take the latest limit by period and sector diversification
+SECTOR_DIVERSIFICATION = spark.sql(f"""
+    select * from (
+        select a.*, max(REPORTING_DATE) over (partition by SECTOR) as max_reporting_date
+        from SECTOR_DIVERSIFICATION a
+    )
+    where REPORTING_DATE = date('{THISRUN_REPORTING_DATE}') or REPORTING_DATE = max_reporting_date
+""").drop("max_reporting_date")
+SECTOR_DIVERSIFICATION.createOrReplaceTempView("SECTOR_DIVERSIFICATION")
+
+AssetDBEntry_Conso_enriched = spark.sql("""
+    select 	a.*,
+            b.LIMITS_FI, b.LIMITS_EQY, b.LIMITS_GLOBAL
+    from AssetDBEntry_Conso_enriched a
+    left outer join SECTOR_DIVERSIFICATION b
+    on a.Sector_Risk = b.SECTOR
+""")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+
+# -------------------------------------------------------------------------------------
+# Create Illiquid Assets Table
+# -------------------------------------------------------------------------------------
+illiquid_assets = spark.sql("""
+    select Entity_ID, Instrument_lmt, sum(Investment_SII_Value)/1000000 as Market_Value
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Properties','Loans & mortgages to individuals','Strategic Participation Part','Equities-unlisted')
+    group by 1,2
+""")
+
+equities_illiquid = spark.sql("""
+    select Entity_ID, liquidity_assessment as Instrument_lmt, SDT_Value as Market_Value
+    from SDT_LISTED
+    where liquidity_assessment = 'Illiquid'
+""")
+
+illiquid = illiquid_assets.unionByName(equities_illiquid)
+illiquid = illiquid.withColumn(
+    "category",
+    F.when(F.col("Instrument_lmt") == "Illiquid", F.lit("Equities - listed with SDT > 7days"))
+     .otherwise(F.col("Instrument_lmt"))
+).drop("Instrument_lmt")
+
+bond_lending = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Bond_lending
+    from AssetDBEntry_Conso_enriched
+    where Solvency_alt_act_descr in ('Government Bonds')
+    and affectation like '%LENDING%'
+    group by 1
+""")
+
+Instrument_illiquid = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Instrument_Illiquid
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Bonds Part')
+    and Liquidity_Assessment = 'Illiquid'
+    group by 1
+""")
+
+Other_loans = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Other_loans
+    from AssetDBEntry_Conso_enriched
+    where (Instrument_lmt in ('Loans Part') and Liquidity_Assessment = 'Illiquid')
+    or (Instrument_lmt in ('Loans on policies'))
+    group by 1
+""")
+
+Investment_funds = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Investment_funds
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Investment Funds Bonds Part', 'Investment Funds Shares Part')
+    and Liquidity_Assessment = 'Illiquid'
+    group by 1
+""")
+
+# proc means (class ENTITY_ID MAGNITUDE_ACCOUNT_5POS Instrument_Type) + keep non missing class values
+Reverse_repos = spark.sql("""
+    select Entity_ID, MAGNITUDE_ACCOUNT_5POS, Instrument_Type,
+            sum(ASSET_MASTER_MARKETVAL_ACC_INC) as ASSET_MASTER_MARKETVAL_ACC_INC
+    from AssetDBEntry_Conso_enriched
+    where Instrument_Type in ('Repos', 'Reverse Repos')
+    group by 1,2,3
+    having MAGNITUDE_ACCOUNT_5POS is not null and Instrument_Type is not null
+""")
+
+nobs = Reverse_repos.count()
+
+if nobs != 0:
+    # proc transpose by Magnitude_account_5pos -> Repos / Reverse_repos
+    Reverse_repos_tr = (Reverse_repos.groupBy("MAGNITUDE_ACCOUNT_5POS")
+                        .pivot("Instrument_Type", ["Repos", "Reverse Repos"])
+                        .agg(F.sum("ASSET_MASTER_MARKETVAL_ACC_INC"))
+                        .withColumnRenamed("Reverse Repos", "Reverse_repos"))
+    # sum(Reverse_repos, -Repos) -> missing values are ignored
+    Reverse_repos = Reverse_repos_tr.select(
+        F.col("MAGNITUDE_ACCOUNT_5POS"),
+        ((F.coalesce(F.col("Reverse_repos"), F.lit(0)) - F.coalesce(F.col("Repos"), F.lit(0))) / 1000000).alias("Repo")
+    )
+
+    illiquid_tot = (bond_lending
+                    .join(Instrument_illiquid, "Entity_ID", "full_outer")
+                    .join(Other_loans, "Entity_ID", "full_outer")
+                    .join(Investment_funds, "Entity_ID", "full_outer"))
+    # SAS merge without BY = one to one merge (by observation number)
+    illiquid_tot = illiquid_tot.withColumn("_row", F.row_number().over(Window.orderBy("Entity_ID")))
+    Reverse_repos_pos = (Reverse_repos
+                         .withColumn("_row", F.row_number().over(Window.orderBy("MAGNITUDE_ACCOUNT_5POS")))
+                         .select("_row", "Repo"))
+    illiquid_tot = illiquid_tot.join(Reverse_repos_pos, "_row", "left").drop("_row")
+else:
+    illiquid_tot = (bond_lending
+                    .join(Instrument_illiquid, "Entity_ID", "full_outer")
+                    .join(Other_loans, "Entity_ID", "full_outer")
+                    .join(Investment_funds, "Entity_ID", "full_outer"))
+
+illiquid_cols = [c for c in ["Bond_lending", "Instrument_Illiquid", "Other_loans", "Investment_funds", "Repo"]
+                 if c in illiquid_tot.columns]
+stack_expr = "stack({0}, {1}) as (category, Market_Value)".format(
+    len(illiquid_cols), ", ".join(["'{0}', {0}".format(c) for c in illiquid_cols])
+)
+illiquid_trnsp = illiquid_tot.selectExpr("Entity_ID", stack_expr)
+
+illiquid_assets = illiquid.unionByName(illiquid_trnsp)
+illiquid_assets = illiquid_assets.withColumn(
+    "category",
+    F.when(F.col("category") == "Bond_lending",        F.lit("Bonds blocked by bond lending"))
+     .when(F.col("category") == "Instrument_Illiquid", F.lit("Instrument with IFRS 7 level > 1"))
+     .when(F.col("category") == "Other_loans",         F.lit("Other loans (incl Loans on policies)"))
+     .when(F.col("category") == "Investment_funds",    F.lit("Investment funds (Closed or monthly valuation)"))
+     .otherwise(F.col("category"))
+)
+illiquid_assets = illiquid_assets.withColumn(
+    "Market_Value",
+    F.when((F.col("category") == "Repo") & (F.col("Market_Value") < 0), F.lit(0))
+     .otherwise(F.col("Market_Value"))
+)
+illiquid_assets = illiquid_assets.withColumn("reporting_date", F.lit(THISRUN_REPORTING_DATE).cast("date"))
+illiquid_assets = illiquid_assets.withColumn("liquidity_category", F.lit("Illiquid"))
+
+
+# -------------------------------------------------------------------------------------
+# Create Liquid Assets Table
+# -------------------------------------------------------------------------------------
+Liquid = spark.sql("""
+    select Entity_ID, Instrument_lmt, sum(Investment_SII_Value)/1000000 as Market_Value
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Cash and cash equivalents Part')
+    group by 1,2
+""")
+
+equities_liquid = spark.sql("""
+    select Entity_ID, sum(SDT_Value) as SDT_Value
+    from SDT_LISTED
+    where liquidity_assessment in ('Liquid', 'Under_watch')
+    group by 1
+""")
+
+Instrument_liquid = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Instrument_liquid
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Bonds Part')
+    and Liquidity_Assessment = 'Liquid'
+    group by 1
+""")
+
+Investment_funds_liquid = spark.sql("""
+    select Entity_ID, sum(Investment_SII_Value)/1000000 as Investment_funds
+    from AssetDBEntry_Conso_enriched
+    where Instrument_lmt in ('Investment Funds Bonds Part', 'Investment Funds Shares Part')
+    and Liquidity_Assessment = 'Liquid'
+    group by 1
+""")
+
+Repos = spark.sql(f"""
+    select Entity_ID, (sum(ASSET_MASTER_MARKETVAL_ACC_INC)/1000000)*-1 as Repos
+    from Assets_Liabilities
+    where Solvency_alt_act_descr in ('Debts owed to credit institutions')
+    and Instrument_Type in ('Repos')
+    and reporting_date = date('{THISRUN_REPORTING_DATE}')
+    group by 1
+""")
+
+# data Repos; merge Reverse_repos Repos; (one to one merge) if Repo < 0 then Repos = sum(Repo, Repos);
+Repos = Repos.withColumn("_row", F.row_number().over(Window.orderBy("Entity_ID")))
+if nobs != 0:
+    Repo_pos = (Reverse_repos
+                .withColumn("_row", F.row_number().over(Window.orderBy("MAGNITUDE_ACCOUNT_5POS")))
+                .select("_row", "Repo"))
+    Repos = Repos.join(Repo_pos, "_row", "full_outer")
+else:
+    Repos = Repos.withColumn("Repo", F.lit(None).cast("double"))
+
+Repos = Repos.withColumn(
+    "Repos",
+    F.when(F.col("Repo") < 0,
+           F.coalesce(F.col("Repo"), F.lit(0)) + F.coalesce(F.col("Repos"), F.lit(0)))
+     .otherwise(F.col("Repos"))
+).select("_row", "Repos")
+
+liquid_tot = (equities_liquid
+              .join(Instrument_liquid, "Entity_ID", "full_outer")
+              .join(Investment_funds_liquid, "Entity_ID", "full_outer")
+              .join(bond_lending, "Entity_ID", "full_outer"))
+# SAS merge without BY = one to one merge (by observation number)
+liquid_tot = liquid_tot.withColumn("_row", F.row_number().over(Window.orderBy("Entity_ID")))
+liquid_tot = liquid_tot.join(Repos, "_row", "left").drop("_row")
+
+liquid_cols = [c for c in ["SDT_Value", "Instrument_liquid", "Investment_funds", "Repos", "Bond_lending"]
+               if c in liquid_tot.columns]
+stack_expr = "stack({0}, {1}) as (Instrument_lmt, Market_Value)".format(
+    len(liquid_cols), ", ".join(["'{0}', {0}".format(c) for c in liquid_cols])
+)
+liquid_trnsp = liquid_tot.selectExpr("Entity_ID", stack_expr)
+
+Liquid_assets = Liquid.unionByName(liquid_trnsp)
+Liquid_assets = Liquid_assets.withColumn(
+    "Market_Value",
+    F.when(F.col("Instrument_lmt") == "Bond_lending", F.lit(-1) * F.col("Market_Value"))
+     .otherwise(F.col("Market_Value"))
+)
+Liquid_assets = Liquid_assets.withColumn(
+    "category",
+    F.when(F.col("Instrument_lmt") == "Bond_lending",      F.lit("Bonds blocked by repo/bond lending"))
+     .when(F.col("Instrument_lmt") == "SDT_Value",         F.lit("Equities - listed with SDT <= 7days"))
+     .when(F.col("Instrument_lmt") == "Instrument_liquid", F.lit("Instrument with IFRS 7 level = 1"))
+     .when(F.col("Instrument_lmt") == "Investment_funds",  F.lit("Investment funds (open and daily valuation)"))
+     .otherwise(F.col("Instrument_lmt"))
+).drop("Instrument_lmt")
+Liquid_assets = Liquid_assets.withColumn("reporting_date", F.lit(THISRUN_REPORTING_DATE).cast("date"))
+Liquid_assets = Liquid_assets.withColumn("liquidity_category", F.lit("Liquid"))
+
+LIQUID_ILLIQUID_ASSETS = illiquid_assets.unionByName(Liquid_assets)
+LIQUID_ILLIQUID_ASSETS.write.mode("overwrite").saveAsTable("OUT_LM.LIQUID_ILLIQUID_ASSETS")
+
+
+# -------------------------------------------------------------------------------------
+# Create specific tables to be uploaded for authorized limits breaches
+# 1. Table: by Country of Risk
+# -------------------------------------------------------------------------------------
+Limits_by_Country = spark.sql("""
+    select reporting_date, Entity_ID, Isin_agr, Country_of_Risk, Country_lmt, business_model,
+            sum(Accouting_Val_IFRS_Accrued_Incl) as book_value,
+            sum(Investment_SII_Value) as market_value
+    from AssetDBEntry_Conso_enriched
+    group by 1,2,3,4,5,6
+    having Country_of_Risk is not null and Entity_ID = 'CONSO'
+""")
+
+Limits_by_Country = Limits_by_Country.withColumn(
+    "amount",
+    F.when(F.col("business_model").isin(["AC"]), F.col("book_value"))
+     .otherwise(F.col("market_value"))
+)
+Limits_by_Country.createOrReplaceTempView("Limits_by_Country")
+
+Limits_by_Country = spark.sql("""
+    select reporting_date, Entity_ID, Country_of_Risk, Country_lmt, sum(amount) as total_amount
+    from Limits_by_Country
+    group by 1,2,3,4
+""")
+
+Limits_by_Country = Limits_by_Country.withColumn(
+    "limit_breach",
+    F.when((F.col("total_amount") > F.col("Country_lmt")) &
+           (~F.col("Country_of_Risk").isin(["BELGIUM", "EUROPE"])), F.lit("YES"))
+     .otherwise(F.lit("NO"))
+)
+Limits_by_Country.write.mode("overwrite").saveAsTable("OUT_LM.Limits_by_Country")
+
+
+# -------------------------------------------------------------------------------------
+# 2. Table: by Issuer, total per Ultimate Parent Risk
+# -------------------------------------------------------------------------------------
+Limits_Issuer_UltimateParent = spark.sql("""
+    select reporting_date, Entity_ID, Ultimate_Parent_Risk, fixed_income_indicator,
+            sum(Accouting_Val_IFRS_Accrued_Incl) as book_value,
+            sum(Quantity_Accounting) as Quantity
+    from AssetDBEntry_Conso_enriched
+    where Sector_Risk not in ('Sovereigns', 'Multi-sector Funds')
+    and Instrument_lmt not in ('Cash and cash equivalents Part')
+    group by 1,2,3,4
+    having Ultimate_Parent_Risk is not null
+""")
+Limits_Issuer_UltimateParent.createOrReplaceTempView("Limits_Issuer_UltimateParent")
+
+ultimate_parent_limits = spark.sql("""
+    select distinct Ultimate_Parent_Risk
+    from ultimate_parent_limits
+""")
+ultimate_parent_limits.createOrReplaceTempView("ultimate_parent_limits")
+
+Limits_Issuer_UltimateParent = spark.sql("""
+    select a.*,
+            case when b.Ultimate_Parent_Risk is not null then 'NO' end as Breach
+    from Limits_Issuer_UltimateParent a
+    left outer join ultimate_parent_limits b
+    on a.Ultimate_Parent_Risk = b.Ultimate_Parent_Risk
+""")
+
+Limits_Issuer_UltimateParent = Limits_Issuer_UltimateParent.withColumn(
+    "Breach",
+    F.when((F.col("book_value") < 150000000) | (F.col("Breach").isNotNull()), F.lit("NO"))
+     .otherwise(F.lit("YES"))
+)
+Limits_Issuer_UltimateParent.write.mode("overwrite").saveAsTable("OUT_LM.Limits_Issuer_UltimateParent")
+
+
+# -------------------------------------------------------------------------------------
+# 3. Table: by Issuer, limits per funds
+# -------------------------------------------------------------------------------------
+Limits_Issuer_Funds = spark.sql("""
+    select reporting_date, Entity_ID, Ultimate_Parent_Risk, Liquidity_Assessment,
+            sum(Accouting_Val_IFRS_Accrued_Incl) as book_value,
+            sum(Quantity_Accounting) as Quantity
+    from AssetDBEntry_Conso_enriched
+    where BSM_split not in ('Convertibles', 'Monetary Funds')
+    and Instrument_lmt in ('Investment Funds Bonds Part')
+    and fixed_income_indicator = 'Fixed Income'
+    group by 1,2,3,4
+""")
+Limits_Issuer_Funds.createOrReplaceTempView("Limits_Issuer_Funds")
+
+Limits_Issuer_Funds = spark.sql("""
+    select a.*,
+            case when b.Ultimate_Parent_Risk is not null then 'NO' end as Breach
+    from Limits_Issuer_Funds a
+    left outer join FUNDS_LIMITS b
+    on a.Ultimate_Parent_Risk = b.Ultimate_Parent_Risk
+""")
+
+Limits_Issuer_Funds = Limits_Issuer_Funds.withColumn(
+    "Breach",
+    F.when((F.col("book_value") >= 100000000) & (F.col("Breach").isNull()), F.lit("YES"))
+     .otherwise(F.lit("NO"))
+)
+Limits_Issuer_Funds.write.mode("overwrite").saveAsTable("OUT_LM.Limits_Issuer_Funds")
+
+
+# -------------------------------------------------------------------------------------
+# 4. Table: Limits on Other bonds (excl. Government Bonds) depending on the Ultimate parent Rating
+# -------------------------------------------------------------------------------------
+Limits_Otherbonds_UltimateParent = spark.sql("""
+    select reporting_date, Entity_ID, Ultimate_Parent_Risk, Issuer, Sector_Risk,
+            Rating_Ultimate_Parent_Risk, LIMITS_ISSUER,
+            sum(Accouting_Val_IFRS_Accrued_Incl) as book_value,
+            sum(Quantity_Accounting) as Quantity
+    from AssetDBEntry_Conso_enriched
+    where fixed_income_indicator = 'Fixed Income'
+    and Instrument_lmt not in ('Investment Funds Bonds Part', 'Investment Funds Shares Part')
+    and Sector_Risk not in ('Sovereigns')
+    and affectation not in ('BELINS HIGH YIELD', 'Belins NON LIFE LENDING', 'FIN_OTHER_B23')
+    group by 1,2,3,4,5,6,7
+    having Rating_Ultimate_Parent_Risk is not null
+""")
+Limits_Otherbonds_UltimateParent.createOrReplaceTempView("Limits_Otherbonds_UltimateParent")
+
+other_bonds_limits = spark.sql("""
+    select distinct Ultimate_Parent_Risk
+    from other_bonds_limits
+""")
+other_bonds_limits.createOrReplaceTempView("other_bonds_limits")
+
+Limits_Otherbonds_UltimateParent = spark.sql("""
+    select a.*,
+            case when b.Ultimate_Parent_Risk is not null then 'NO' end as Breach
+    from Limits_Otherbonds_UltimateParent a
+    left outer join other_bonds_limits b
+    on a.Ultimate_Parent_Risk = b.Ultimate_Parent_Risk
+""")
+
+Limits_Otherbonds_UltimateParent = Limits_Otherbonds_UltimateParent.withColumn(
+    "Breach",
+    F.when((F.col("book_value") < F.col("LIMITS_ISSUER")) |
+           (F.col("Breach").isNotNull()) |
+           (F.col("LIMITS_ISSUER") == 0), F.lit("NO"))
+     .otherwise(F.lit("YES"))
+)
+Limits_Otherbonds_UltimateParent.write.mode("overwrite").saveAsTable("OUT_LM.Limits_Otherbonds_UltimateParent")
