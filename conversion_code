@@ -1,0 +1,993 @@
+/***************************************************************************************************/
+/***************************************************************************************************/
+/***************************************************************************************************/
+/*	Program: 	B_ASSETS_14_Limit_Monitoring_Report
+ 
+	Goal: 		Program used to prepare the tables to be uploaded into SAS VA for the
+				Limit Monitoring Report
+								
+				
+	Comments:	
+				
+*/
+/***************************************************************************************************/
+/***************************************************************************************************/
+/***************************************************************************************************
+	Who			When		Why\What
+
+	CC			20251126	Updated Version
+****************************************************************************************************/
+
+/*Transformation for Limits Monitoring report only */
+
+/*Create a different split by category */
+data 	AssetDBEntry_Conso_enriched;
+set 	AssetDBEntry_Conso_enriched;
+length 	Instrument_lmt $64.;  
+select ;
+	when 	(Solvency_alt_act_descr	="Corporate Bonds") 																																							Instrument_lmt ='Bonds Part';
+    when 	(Solvency_alt_act_descr	="Government Bonds") 																																							Instrument_lmt ='Bonds Part';
+	when 	(Solvency_alt_act_descr	="Collateralised securities") 																																					Instrument_lmt ='Bonds Part';
+	when 	(Solvency_alt_act_descr	="Structured notes") 																																							Instrument_lmt ='Bonds Part';
+    when 	(Solvency_alt_act_descr	="Other loans & mortgages") 																																					Instrument_lmt ='Loans Part';
+	when 	(Solvency_alt_act_descr	="Investment funds" and (Investment_Category_Solvency = "Debt Funds" or Investment_Category_Solvency = "Money Market Funds" )) 													Instrument_lmt ='Investment Funds Bonds Part';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) not in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split not in ("Buildings", "Fonds Obligataires"))	Instrument_lmt ='Equities-listed';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) not in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split = "Buildings")									Instrument_lmt ='Properties';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) not in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split = "Fonds Obligataires")						Instrument_lmt ='Investment Funds Bonds Part';
+	when 	(Solvency_alt_act_descr	="Equities - listed" and BSM_split not in ("Buildings","Fonds Obligataires")) 																									Instrument_lmt ='Equities-listed';
+	when 	(Solvency_alt_act_descr	="Equities - listed" and BSM_split = "Buildings") 																																Instrument_lmt ='Properties';
+	when 	(Solvency_alt_act_descr	="Equities - listed" and BSM_split = "Fonds Obligataires") 																														Instrument_lmt ='Investment Funds Bonds Part';
+    when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split not in ("Buildings","Fonds Obligataires"))			Instrument_lmt ='Equities-unlisted';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split = "Buildings")										Instrument_lmt ='Properties';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) in ("XL", "XT") and Participation_Solvency in ("2YNGNS", "2YGNS") and BSM_split = "Fonds Obligataires")							Instrument_lmt ='Investment Funds Bonds Part';
+	when 	(Solvency_alt_act_descr	="Equities - unlisted" and BSM_split not in ("Buildings","Fonds Obligataires")) 																								Instrument_lmt ='Equities-unlisted';
+	when 	(Solvency_alt_act_descr	="Equities - unlisted" and BSM_split = "Buildings") 																															Instrument_lmt ='Properties';
+	when 	(Solvency_alt_act_descr	="Equities - unlisted" and BSM_split = "Fonds Obligataires") 																													Instrument_lmt ='Investment Funds Bonds Part';
+	when 	(Solvency_alt_act_descr	="Investment funds" and Investment_Category_Solvency in("Equities","Shares","Buffer T23") and BSM_split ne "Buildings") 														Instrument_lmt ='Investment Funds Shares Part';
+	when 	(Solvency_alt_act_descr	="Investment funds" and Investment_Category_Solvency in("Equities","Shares","Buffer T23") and BSM_split = "Buildings") 															Instrument_lmt ='Properties';
+	when 	(Investment_Category_Solvency = "Participations" and substr(CIC,1,2) in ("XL", "XT") and (Participation_Solvency = "2YGS" or Participation_Solvency = "2YNGS")) 										Instrument_lmt ='Strategic Participation Part';
+	when 	(Solvency_alt_act_descr	="Cash and cash equivalents") 																																					Instrument_lmt ='Cash and cash equivalents Part';
+	when    (Solvency_alt_act_descr	="Property (other than for own use)" or Solvency_alt_act_descr	="Property, plant & equipement held for own use") 																Instrument_lmt ='Properties';
+	when    (Solvency_alt_act_descr	="Loans & mortgages to individuals" and (Investment_Category_Solvency = "Mortgages" or Investment_Category_Solvency = "Other Loans")) 											Instrument_lmt ='Loans & mortgages to individuals';
+    when    (Solvency_alt_act_descr	="Loans on policies") 																																							Instrument_lmt ='Loans on policies';
+    otherwise Instrument_lmt="";
+end;
+
+/*Manual mapping for the asset Alan SA - Update 20/11/2024*/
+if assets_code_agr = "Alan SA" then
+	do;
+		Instrument_lmt ='Equities-unlisted (excluded)';
+	end;
+run;
+
+/*Value per Beta */
+data AssetDBEntry_Conso_enriched;
+set AssetDBEntry_Conso_enriched;
+if instrument_lmt = "Equities-listed" then Beta_Equities = BETA*Investment_SII_Value;
+run;
+
+/*Add Rating Factor Internal for Cash and Cash equivalents. The value is based on the rating hard-coded given by Belfius Banque*/
+data AssetDBEntry_Conso_enriched;
+set AssetDBEntry_Conso_enriched;
+if solvency_alt_act_descr not in ("Investment funds")  then Rating_Factor_Internal = Rating_Factor;
+run;
+
+/*Special treatment for Investment Funds Rating Waterfall value */
+data AssetDBEntry_Conso_enriched;
+set AssetDBEntry_Conso_enriched;
+if solvency_alt_act_descr = "Investment funds" 
+	and rating_factor_internal ne . 
+			then RATING_SOLVENCY_INTERNAL = Rating_Waterfall_Funds;
+if solvency_alt_act_descr = "Investment funds" 
+	and rating_factor_internal ne . 
+			then rating_waterfall=coalescec(RATING_SOLVENCY_INTERNAL, RATING_SOLVENCY_EXTERNAL, "NR");
+drop Internal_Rating_Factor Rating_Waterfall_Funds;
+run;
+
+data AssetDBEntry_Conso_enriched;
+set AssetDBEntry_Conso_enriched;
+if not missing(Rem_Mat_Funds) then 
+	do;
+		REM_MAT = Rem_Mat_Funds;
+		REM_MAT_LOW = min(50,max(0,floor(REM_MAT)));
+		REM_MAT_UP = max(REM_MAT_LOW,min(50,ceil(REM_MAT)));
+	end;
+else if not missing(Rem_Mat_Mortgages) then
+	do;
+		REM_MAT = Rem_Mat_Mortgages;
+		REM_MAT_LOW = min(50,max(0,floor(REM_MAT)));
+		REM_MAT_UP = max(REM_MAT_LOW,min(50,ceil(REM_MAT)));
+	end;
+else if not missing(Asset_Redemption_Date_Agr) then
+	do;
+		REM_MAT=(ASSET_REDEMPTION_DATE_AGR-reporting_date)/360;	
+		REM_MAT_LOW = min(50,max(0,floor(REM_MAT)));
+		REM_MAT_UP = max(REM_MAT_LOW,min(50,ceil(REM_MAT)));
+	end;
+drop Rem_Mat_Funds Rem_Mat_Mortgages;
+run;
+
+proc sql noprint;
+	create table work.AssetDBEntry_Conso_enriched as
+	select	a.*,
+			b.DEFAULT_PROB as DEFAULT_PROB_LOW,
+			c.DEFAULT_PROB as DEFAULT_PROB_UP
+	from work.AssetDBEntry_Conso_enriched a
+	left outer join work.DEFAULT_PROBABILITY b
+	on a.RATING_WATERFALL = b.RATING
+	and a.REM_MAT_LOW = b.MATURITY
+	left outer join work.DEFAULT_PROBABILITY c
+	on a.RATING_WATERFALL = c.RATING
+	and a.REM_MAT_UP = c.MATURITY;
+quit;
+
+data work.AssetDBEntry_Conso_enriched;
+set work.AssetDBEntry_Conso_enriched;
+if REM_MAT_LOW = REM_MAT_UP then DEFAULT_PROB = DEFAULT_PROB_LOW;
+else DEFAULT_PROB = (REM_MAT_UP - REM_MAT) * DEFAULT_PROB_LOW + (REM_MAT - REM_MAT_LOW) * DEFAULT_PROB_UP; 
+RATING_FACTOR_INTERNAL_DUR = DEFAULT_PROB * 10000;
+if SOLVENCY_ALT_ACT_NEW = "R0250" then
+	do;
+		RATING_FACTOR_INTERNAL_DUR = rating_factor_internal_mortgages;
+	end;
+REMAINING_MATURITY_TIMES_IFRS_BV = REM_MAT * ACCOUTING_VAL_IFRS_ACCRUED_INCL;
+RATING_FAC_INT_DUR_TIMES_IFRS_BV = RATING_FACTOR_INTERNAL_DUR * ACCOUTING_VAL_IFRS_ACCRUED_INCL;
+drop DEFAULT_PROB_LOW DEFAULT_PROB_UP DEFAULT_PROB REM_MAT_LOW REM_MAT_UP rating_factor_internal_mortgages Rem_Mat_Mortgages;
+rename REM_MAT = REMAINING_MATURITY;
+run;
+
+/*Update of WARF computation to take into account spreadlocks transactions*/
+proc sql noprint;
+	create table work.data_spreadlocks as
+	select	entity_id,
+			alm_segment,
+			asset_master,
+			asset_master_isin,
+			sum(quantity_accounting) as quantity_accounting
+	from work.AssetDBEntry_Conso_enriched
+	where solvency_alt_act_new = "R0190" and BSM_split = "Forward Bonds"
+	group by 1,2,3,4;
+
+	create table work.data_bonds_exposure as
+	select	entity_id,
+			alm_segment,
+			assets_agr,
+			isin_agr,
+			sum(quantity_accounting) as quantity_accounting,
+			sum(ACCOUTING_VAL_IFRS_ACCRUED_INCL) as ACCOUTING_VAL_IFRS_ACCRUED_INCL,
+			sum(RATING_FAC_INT_DUR_TIMES_IFRS_BV) as RATING_FAC_INT_DUR_TIMES_IFRS_BV
+	from work.AssetDBEntry_Conso_enriched
+	where solvency_alt_act_new in ("R0140","R0150","R0160","R170")
+	group by 1,2,3,4;
+
+	create table work.compute_spreadlocks as
+	select	t1.*,
+			t2.quantity_accounting as quantity_exposure,
+			t2.ACCOUTING_VAL_IFRS_ACCRUED_INCL,
+			t2.RATING_FAC_INT_DUR_TIMES_IFRS_BV
+	from work.data_spreadlocks t1
+	left outer join work.data_bonds_exposure t2
+	on t1.entity_id = t2.entity_id
+	and t1.alm_segment = t2.alm_segment
+	and t1.asset_master = t2.assets_agr
+	and t1.asset_master_isin = t2.isin_agr;
+quit;
+
+data work.compute_spreadlocks_2;
+set work.compute_spreadlocks;
+spreadlock_coverage = sum(0,quantity_accounting / quantity_exposure);
+run;
+
+proc sql noprint;
+	create table work.AssetDBEntry_Conso_enriched as
+	select 	t1.*,
+			t2.spreadlock_coverage
+	from work.AssetDBEntry_Conso_enriched t1
+	left outer join work.compute_spreadlocks_2 t2
+	on t1.entity_id = t2.entity_id
+	and t1.alm_segment = t2.alm_segment
+	and t1.assets_agr = t2.asset_master
+	and t1.isin_agr = t2.asset_master_isin;
+quit;
+
+data work.AssetDBEntry_Conso_enriched;
+set work.AssetDBEntry_Conso_enriched ;
+RAT_INT_DUR_TIMES_IFRS_BV_NOSL = RATING_FAC_INT_DUR_TIMES_IFRS_BV;
+if not missing(spreadlock_coverage) then
+	RATING_FAC_INT_DUR_TIMES_IFRS_BV = (1-spreadlock_coverage) * RATING_FAC_INT_DUR_TIMES_IFRS_BV;
+drop spreadlock_coverage;
+run;
+
+/*SDT calculations*/
+proc sql;
+create table SDT as
+select distinct entity_id, Instrument_Lmt, ASSETS_CODE_AGR, Issuer, sum(investment_SII_value) as market_value, 
+		sum(0,volume_avg_1M * 0.3) as volume_avg_1M, sum(quantity_accounting) as quantity
+from AssetDBEntry_Conso_enriched
+where Instrument_Lmt in ('Equities-listed', 'Equities-unlisted','Investment Funds Shares Part')
+group by 1,2,3,4;
+run;
+
+data SDT_ALL;
+set SDT;
+price_per_action = market_value/quantity;
+/*select liquid quantity*/
+	if volume_avg_1m*7 > quantity then liquid_quantity= quantity; 
+	else liquid_quantity = volume_avg_1m*7;
+/*select under watch quantity*/
+		if liquid_quantity = quantity then underwatch_quantity = 0;
+		else if (quantity - liquid_quantity) < (volume_avg_1M*0) then underwatch_quantity = quantity - liquid_quantity;
+		else underwatch_quantity = volume_avg_1M*0;
+/*select illiquid quantity*/
+			illiquid_quantity = quantity - underwatch_quantity - liquid_quantity;
+/*Market Value for the liquidity assessment quantity*/
+				Liquid_MV=price_per_action*liquid_quantity;
+				Illiquid_MV=price_per_action*illiquid_quantity;
+				Underwatch_MV=price_per_action*underwatch_quantity;
+run;
+
+proc sql;
+create table SDT_ALL_FULL as
+select entity_ID, sum(Liquid_MV)/1000000 as Liquid, sum(Illiquid_MV)/1000000 as Illiquid, sum(Underwatch_MV)/1000000 as Under_watch
+from SDT_ALL
+group by entity_ID;
+quit;
+
+proc sql;
+create table SDT_ALL_LISTED as
+select entity_ID, sum(Liquid_MV)/1000000 as Liquid, sum(Illiquid_MV)/1000000 as Illiquid, sum(Underwatch_MV)/1000000 as Under_watch
+from SDT_ALL
+where Instrument_Lmt eq "Equities-listed"
+group by entity_ID;
+quit;
+
+/*Since information is at the aggregate level, a new table is created to be used for SAS VA*/
+
+proc transpose data=SDT_ALL_FULL out= SDT_ALL_FULL_TR (rename=(col1=SDT_Value)) name=liquidity_assessment;
+by Entity_ID;
+run;
+
+data SDT;
+set SDT_ALL_FULL_TR;
+format reporting_date yymmddn8.;
+reporting_date=&THISRUN_REPORTING_DATE.;
+run;
+
+data  	OUT_LM.SDT;
+set  	SDT;
+run;
+
+proc transpose data=SDT_ALL_LISTED out= SDT_ALL_LISTED_TR (rename=(col1=SDT_Value)) name=liquidity_assessment;
+by Entity_ID;
+run;
+
+data SDT_LISTED;
+set SDT_ALL_LISTED_TR;
+format reporting_date yymmddn8.;
+reporting_date=&THISRUN_REPORTING_DATE.;
+run;
+
+/*End SDT calculation*/
+
+proc sql;
+create table AssetDBEntry_Conso_enriched as
+select 	a.*,
+		(a.QUANTITY_ACCOUNTING/b.QUANTITY) * b.LIQUID_MV as LIQUID_MV,
+		(a.QUANTITY_ACCOUNTING/b.QUANTITY) * b.ILLIQUID_MV as ILLIQUID_MV,
+		(a.QUANTITY_ACCOUNTING/b.QUANTITY) * b.UNDERWATCH_MV as UNDERWATCH_MV
+from AssetDBEntry_Conso_enriched a 
+left outer join SDT_ALL b 
+on a.Entity_ID = b.Entity_ID
+and a.Assets_code_agr = b.Assets_code_agr
+
+;
+quit;
+
+data AssetDBEntry_Conso_enriched;
+set AssetDBEntry_Conso_enriched;
+if Instrument_lmt in ("Bonds Part","Investment Funds Bonds Part","Investment Funds Shares Part", "Loans & mortgages to individuals","Loans on policies",
+						"Loans Part","Strategic Participation Part") then
+	do;
+		LIQUID_MV = INVESTMENT_SII_VALUE * (Liquidity_Assessment = "Liquid");
+		ILLIQUID_MV = INVESTMENT_SII_VALUE * (Liquidity_Assessment = "Illiquid");
+	end;
+if Instrument_lmt in ("Cash and cash equivalents Part") then LIQUID_MV = INVESTMENT_SII_VALUE;
+if Instrument_lmt in ("Properties") then ILLIQUID_MV = INVESTMENT_SII_VALUE;
+
+run;
+
+/*Add country, sovereign, rating ultimate parent and  limits*/
+
+/*take the latest limit by period and country*/
+proc sql;
+create table Country_Limits as
+select *
+from Country_Limits
+group by COUNTRY_NAME
+having REPORTING_DATE=&THISRUN_REPORTING_DATE. or reporting_date=max(REPORTING_DATE);
+quit;
+
+proc sql;
+create table 	AssetDBEntry_Conso_enriched as
+select 	a.*, 
+		b.Limits_CNTR as Country_lmt
+from 	AssetDBEntry_Conso_enriched a
+		left outer join Country_Limits b
+			on upcase(a.Country_of_Risk) = B.Country_Name
+;
+quit;
+
+/*take the latest limit by period and sovereign*/
+proc sql;
+create table Sovereign_Limits as
+select *
+from Sovereign_Limits
+group by SOVEREIGN
+having REPORTING_DATE=&THISRUN_REPORTING_DATE. or reporting_date=max(REPORTING_DATE);
+quit;
+
+proc sql;
+create table AssetDBEntry_Conso_enriched as
+select 	a.*, 
+		b.Limits_SVRG as sovereign_lmt
+from AssetDBEntry_Conso_enriched a
+	left outer join Sovereign_Limits b
+		on upcase(a.Country_of_Risk) = B.Sovereign
+;
+quit;
+
+/*take the latest limit by period and rating issuer*/
+proc sql;
+create table RATING_ISSUER_Limits as
+select *
+from RATING_ISSUER_Limits
+group by RATING_ULTIMATE_PARENT_RISK
+having REPORTING_DATE=&THISRUN_REPORTING_DATE. or reporting_date=max(REPORTING_DATE);
+quit;
+
+proc sql;
+create table AssetDBEntry_Conso_enriched as
+select a.*, b.LIMITS_ISSUER
+from 	AssetDBEntry_Conso_enriched a
+		left outer join RATING_ISSUER_Limits b
+			on a.Rating_Ultimate_Parent_Risk = B.RATING_ULTIMATE_PARENT_RISK
+;
+quit;
+
+/*take the latest limit by period and sector diversification*/
+proc sql;
+create table SECTOR_DIVERSIFICATION as
+select *
+from SECTOR_DIVERSIFICATION
+group by SECTOR
+having REPORTING_DATE=&THISRUN_REPORTING_DATE. or reporting_date=max(REPORTING_DATE);
+quit;
+
+
+proc sql;
+create table 	AssetDBEntry_Conso_enriched as
+select a.*, b.LIMITS_FI, b.LIMITS_EQY, b.LIMITS_GLOBAL
+from 	AssetDBEntry_Conso_enriched a
+		left outer join SECTOR_DIVERSIFICATION b
+			on a.Sector_Risk = B.SECTOR
+;
+quit;
+
+/* Create Illiquid Assets Table*/
+
+proc sql;
+create table illiquid_assets as
+select entity_id, instrument_lmt, sum(investment_SII_value)/1000000 as Market_Value
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Properties','Loans & mortgages to individuals','Strategic Participation Part', 'Equities-unlisted')
+group by 1,2
+;
+quit;
+
+proc sql;
+create table equities_illiquid as
+select entity_id, liquidity_assessment as instrument_lmt, SDT_value as Market_Value
+from SDT_LISTED
+where liquidity_assessment = 'Illiquid' 
+group by 1
+;
+run;
+
+data illiquid;
+set illiquid_assets 
+	equities_illiquid;
+length category $ 50.;
+if instrument_lmt = 'Illiquid' then category = 'Equities - listed with SDT > 7days';
+else category = instrument_lmt;
+drop instrument_lmt;
+run;
+
+proc sql;
+create table bond_lending as
+select entity_id, sum(investment_SII_value)/1000000 as Bond_lending
+from AssetDBEntry_Conso_enriched
+where Solvency_alt_act_descr in ('Government Bonds')
+and affectation contains 'LENDING'
+group by 1;
+quit;
+
+proc sql;
+create table Instrument_illiquid as
+select entity_id,sum(investment_SII_value)/1000000 as Instrument_Illiquid
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Bonds Part')
+and Liquidity_Assessment eq 'Illiquid'
+group by 1;
+quit;
+
+proc sql;
+create table Other_loans as
+select entity_id, sum(investment_SII_value)/1000000 as Other_loans
+from AssetDBEntry_Conso_enriched
+where (instrument_lmt in ('Loans Part')and Liquidity_Assessment eq 'Illiquid')
+or (instrument_lmt in ('Loans on policies'))
+group by 1;
+quit;
+
+proc sql;
+create table Investment_funds as
+select entity_id,sum(investment_SII_value)/1000000 as Investment_funds
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Investment Funds Bonds Part', 'Investment Funds Shares Part')
+and Liquidity_Assessment eq 'Illiquid'
+group by 1;
+quit;
+
+proc means data=AssetDBEntry_Conso_enriched (where= (instrument_type in ("Repos", "Reverse Repos"))) sum;
+class ENTITY_ID MAGNITUDE_ACCOUNT_5POS Instrument_Type;
+var ASSET_MASTER_MARKETVAL_ACC_INC;
+output out=Reverse_repos sum=;
+run;
+
+data Reverse_repos;
+set Reverse_repos (drop=_freq_ _type_);
+if not missing(MAGNITUDE_ACCOUNT_5POS) and not missing(Instrument_type);
+run; 
+
+proc transpose data=Reverse_repos out=Reverse_repos_tr (rename=(col1=Repos) rename=(col2=Reverse_repos));
+by Magnitude_account_5pos;
+run;
+
+%let dsid=%SYSFUNC(OPEN(work.Reverse_repos));
+%let nobs=%SYSFUNC(ATTRN(&dsid.,NOBS));
+%let rc=%SYSFUNC(CLOSE(&dsid.));
+
+%if &nobs. ne 0 %then
+	%do;
+		proc sql;
+		create table Reverse_repos as
+		select sum(Reverse_repos, - Repos)/1000000 as Repo
+		from Reverse_repos_tr
+		group by Magnitude_account_5pos;
+		run;
+
+		data illiquid_tot;
+		merge bond_lending
+		Instrument_illiquid
+		Other_loans
+		investment_funds
+		Reverse_repos	
+		;
+		run;
+	%end;
+%else
+	%do;
+		data illiquid_tot;
+		merge bond_lending
+			Instrument_illiquid
+			Other_loans
+			investment_funds
+		;
+		run;
+	%end;
+
+proc transpose data=illiquid_tot out= illiquid_trnsp (rename=(col1=Market_Value)) name=category;;
+by Entity_ID;
+run;
+
+data illiquid_assets;
+set illiquid
+	illiquid_trnsp;
+if category = "Bond_lending" then category = "Bonds blocked by bond lending";
+if category = "Instrument_Illiquid" then category = "Instrument with IFRS 7 level > 1";
+if category = "Other_loans" then category = "Other loans (incl Loans on policies)";
+if category = "Investment_funds" then category = "Investment funds (Closed or monthly valuation)";
+if category = "Repo" and Market_Value <0 then Market_Value = 0;
+format reporting_date yymmddn8.;
+reporting_date=&THISRUN_REPORTING_DATE.;
+liquidity_category = 'Illiquid';
+run;
+
+/* Create Liquid Assets Table*/
+
+proc sql;
+create table Liquid as
+select entity_id, instrument_lmt, sum(investment_SII_value)/1000000 as Market_Value
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Cash and cash equivalents Part')
+group by 1,2
+;
+quit;
+
+proc sql;
+create table equities_liquid as
+select entity_id,sum(SDT_value) as SDT_Value
+from SDT_LISTED
+where liquidity_assessment in ('Liquid', 'Under_watch')
+group by 1;
+run;
+
+proc sql;
+create table Instrument_liquid as
+select entity_id,sum(investment_SII_value)/1000000 as Instrument_liquid
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Bonds Part')
+and Liquidity_Assessment eq 'Liquid'
+group by 1;
+quit;
+
+proc sql;
+create table Investment_funds_liquid as
+select entity_id,sum(investment_SII_value)/1000000 as Investment_funds
+from AssetDBEntry_Conso_enriched
+where instrument_lmt in ('Investment Funds Bonds Part', 'Investment Funds Shares Part')
+and Liquidity_Assessment eq 'Liquid' 
+group by 1;
+quit;
+
+proc sql;
+create table Repos as
+select entity_id,(sum(ASSET_MASTER_MARKETVAL_ACC_INC)/1000000)*-1 as Repos
+from OUT_MPT.Assets_Liabilities
+where Solvency_alt_act_descr in ('Debts owed to credit institutions')
+and instrument_type in ("Repos")
+and reporting_date=&THISRUN_REPORTING_DATE.
+group by 1;
+quit;
+
+data Repos;
+merge Reverse_repos
+	Repos;
+if Repo <0 then repos=sum(Repo,Repos);
+keep Repos;
+run;
+
+data liquid_tot;
+merge equities_liquid
+	Instrument_liquid
+	Investment_funds_liquid
+	Repos
+	bond_lending;
+run;
+
+proc transpose data=liquid_tot out= liquid_trnsp (rename=(col1=Market_Value)) name=instrument_lmt;;
+by entity_id;
+run;
+
+data Liquid_assets (drop=instrument_lmt);
+set Liquid
+	liquid_trnsp;
+length category $ 50.;
+if instrument_lmt = "Bond_lending" then do;
+category = "Bonds blocked by repo/bond lending";
+Market_Value = -1 * Market_Value;
+end;
+else do;
+category = instrument_lmt;
+end;
+if instrument_lmt = "SDT_Value" then category = "Equities - listed with SDT <= 7days";
+else if instrument_lmt = "Instrument_liquid" then category = "Instrument with IFRS 7 level = 1";
+else if instrument_lmt = "Investment_funds" then category = "Investment funds (open and daily valuation)";
+else;
+format reporting_date yymmddn8.;
+reporting_date=&THISRUN_REPORTING_DATE.;
+liquidity_category = 'Liquid';
+run;
+
+data LIQUID_ILLIQUID_ASSETS;
+set illiquid_assets Liquid_assets;
+run;
+
+data  OUT_LM.LIQUID_ILLIQUID_ASSETS;
+set  	LIQUID_ILLIQUID_ASSETS;
+run;
+
+/*Create specific tables to be uploaded for authorized limits breaches not be shown on SAS VA*/
+
+/*1. Table: by Country of Risk*/
+
+proc sql;
+create table Limits_by_Country as
+select reporting_date,entity_id,isin_agr, country_of_risk,country_lmt, business_model, sum(accouting_val_ifrs_accrued_incl) as book_value, sum(investment_SII_value) as market_value
+from AssetDBEntry_Conso_enriched
+group by 1,2,3,4,5,6
+having not(missing(country_of_risk)) and entity_id eq ("CONSO");
+quit;
+
+data Limits_by_Country;
+set Limits_by_Country;
+if business_model in ("AC") then amount=book_value;
+else amount=market_value;
+run;
+
+proc sql;
+create table Limits_by_Country as
+select reporting_date, entity_id,country_of_risk,country_lmt,sum(amount) as total_amount
+from Limits_by_Country
+group by 1,2,3,4;
+quit;
+
+data Limits_by_Country;
+set Limits_by_Country;
+if (total_amount gt country_lmt and country_of_risk not in ("BELGIUM","EUROPE")) then limit_breach = "YES";
+else limit_breach = "NO";
+run;
+
+data  OUT_LM.Limits_by_Country;
+set  	Limits_by_Country;
+run;
+
+/*2. Table: by Issuer, total per Ultimate Parent Risk*/
+
+proc sql;
+create table Limits_Issuer_UltimateParent as
+select reporting_date,entity_id,ultimate_parent_risk,fixed_income_indicator, sum(accouting_val_ifrs_accrued_incl) as book_value, sum(quantity_accounting) as Quantity
+from AssetDBEntry_Conso_enriched
+where sector_risk not in ("Sovereigns", "Multi-sector Funds") and instrument_lmt not in ("Cash and cash equivalents Part")
+group by 1,2,3,4
+having not(missing(Ultimate_parent_risk));
+quit;
+
+proc sql;
+create table ultimate_parent_limits as
+select distinct ultimate_parent_risk
+from ultimate_parent_limits;
+run;
+
+
+proc sql;
+create table Limits_Issuer_UltimateParent as
+select a.*, 
+	case when exists 
+			(select ultimate_parent_risk from ultimate_parent_limits where a.ultimate_parent_risk = b.ultimate_parent_risk)
+				then 'NO' end as Breach
+from Limits_Issuer_UltimateParent a
+left outer join ultimate_parent_limits b
+on a.ultimate_parent_risk = b.ultimate_parent_risk
+;
+quit;
+
+data Limits_Issuer_UltimateParent;
+length Breach $6.;
+set Limits_Issuer_UltimateParent;
+if Book_value lt 150000000 or not(missing(Breach)) then Breach = "NO";
+else Breach = "YES";
+run;
+
+data  OUT_LM.Limits_Issuer_UltimateParent;
+set  	Limits_Issuer_UltimateParent;
+run;
+
+
+/*3. Table: by Issuer, limits per funds*/
+
+proc sql;
+create table Limits_Issuer_Funds as
+select reporting_date, entity_id, ultimate_parent_risk, liquidity_assessment, sum(accouting_val_ifrs_accrued_incl) as book_value, sum(quantity_accounting) as Quantity
+from AssetDBEntry_Conso_enriched
+where bsm_split not in ("Convertibles", "Monetary Funds") and instrument_lmt in ("Investment Funds Bonds Part") and fixed_income_indicator eq ("Fixed Income")
+group by 1,2,3,4;
+quit;
+
+proc sql;
+create table Limits_Issuer_Funds as
+select a.*, 
+	case when exists 
+			(select ultimate_parent_risk from FUNDS_LIMITS where a.ultimate_parent_risk = b.ultimate_parent_risk)
+				then 'NO' end as Breach
+from Limits_Issuer_Funds a
+left outer join FUNDS_LIMITS b
+on a.ultimate_parent_risk = b.ultimate_parent_risk
+;
+quit;
+
+data Limits_Issuer_Funds;
+set Limits_Issuer_Funds;
+if Book_value ge 100000000 and missing(Breach)
+		then Breach = "YES";
+else Breach="NO";
+run;
+
+data  OUT_LM.Limits_Issuer_Funds;
+set  	Limits_Issuer_Funds;
+run;
+
+
+/*4. Table: Limits on Other bonds (excl. Government Bonds) depending on the Ultimate parent Rating*/
+
+proc sql;
+create table Limits_Otherbonds_UltimateParent as
+select reporting_date,entity_id,ultimate_parent_risk,issuer, sector_risk, rating_ultimate_parent_risk, limits_issuer, sum(accouting_val_ifrs_accrued_incl) as book_value, sum(quantity_accounting) as Quantity
+from AssetDBEntry_Conso_enriched
+where fixed_income_indicator eq ("Fixed Income") 
+	and instrument_lmt not in ("Investment Funds Bonds Part", "Investment Funds Shares Part") 
+		and sector_risk not in ("Sovereigns")
+				and affectation not in ("BELINS HIGH YIELD", "Belins NON LIFE LENDING", "FIN_OTHER_B23")
+group by 1,2,3,4,5,6,7
+having not(missing(rating_ultimate_parent_risk));
+quit;
+
+proc sql;
+create table other_bonds_limits as
+select distinct ultimate_parent_risk
+from other_bonds_limits;
+run;
+
+
+proc sql;
+create table Limits_Otherbonds_UltimateParent as
+select a.*, 
+	case when exists 
+			(select ultimate_parent_risk from other_bonds_limits where a.ultimate_parent_risk = b.ultimate_parent_risk)
+				then 'NO' end as Breach
+from Limits_Otherbonds_UltimateParent a
+left outer join other_bonds_limits b
+on a.ultimate_parent_risk = b.ultimate_parent_risk
+;
+quit;
+
+data Limits_Otherbonds_UltimateParent;
+length Breach $6.;
+set Limits_Otherbonds_UltimateParent;
+if Book_value lt limits_issuer or not(missing(Breach)) or limits_issuer eq 0 then Breach = "NO";
+else Breach = "YES";
+run;
+
+data  OUT_LM.Limits_Otherbonds_UltimateParent;
+set  	Limits_Otherbonds_UltimateParent;
+run;
+
+-------------------------------------------------------------------------------------
+
+AssetDBEntry_Conso_enriched = spark.table("AssetDBEntry_Conso_enriched")
+
+from pyspark.sql import functions as F  
+from pyspark.sql.functions import col, when ,coalesce 
+  
+# Définition de l'expression pour la colonne Instrument_lmt  
+instrument_lmt_expr = """  
+    CASE  
+        WHEN Solvency_alt_act_descr = 'Corporate Bonds' THEN 'Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Government Bonds' THEN 'Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Collateralised securities' THEN 'Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Structured notes' THEN 'Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Other loans & mortgages' THEN 'Loans Part'  
+        WHEN Solvency_alt_act_descr = 'Investment funds' AND Investment_Category_Solvency IN ('Debt Funds', 'Money Market Funds') THEN 'Investment Funds Bonds Part'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) NOT IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split NOT IN ('Buildings', 'Fonds Obligataires') THEN 'Equities-listed'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) NOT IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split = 'Buildings' THEN 'Properties'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) NOT IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split = 'Fonds Obligataires' THEN 'Investment Funds Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Equities - listed' AND BSM_split NOT IN ('Buildings', 'Fonds Obligataires') THEN 'Equities-listed'  
+        WHEN Solvency_alt_act_descr = 'Equities - listed' AND BSM_split = 'Buildings' THEN 'Properties'  
+        WHEN Solvency_alt_act_descr = 'Equities - listed' AND BSM_split = 'Fonds Obligataires' THEN 'Investment Funds Bonds Part'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split NOT IN ('Buildings', 'Fonds Obligataires') THEN 'Equities-unlisted'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split = 'Buildings' THEN 'Properties'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YNGNS', '2YGNS') AND BSM_split = 'Fonds Obligataires' THEN 'Investment Funds Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Equities - unlisted' AND BSM_split NOT IN ('Buildings', 'Fonds Obligataires') THEN 'Equities-unlisted'  
+        WHEN Solvency_alt_act_descr = 'Equities - unlisted' AND BSM_split = 'Buildings' THEN 'Properties'  
+        WHEN Solvency_alt_act_descr = 'Equities - unlisted' AND BSM_split = 'Fonds Obligataires' THEN 'Investment Funds Bonds Part'  
+        WHEN Solvency_alt_act_descr = 'Investment funds' AND Investment_Category_Solvency IN ('Equities', 'Shares', 'Buffer T23') AND BSM_split != 'Buildings' THEN 'Investment Funds Shares Part'  
+        WHEN Solvency_alt_act_descr = 'Investment funds' AND Investment_Category_Solvency IN ('Equities', 'Shares', 'Buffer T23') AND BSM_split = 'Buildings' THEN 'Properties'  
+        WHEN Investment_Category_Solvency = 'Participations' AND substring(CIC, 1, 2) IN ('XL', 'XT') AND  
+             Participation_Solvency IN ('2YGS', '2YNGS') THEN 'Strategic Participation Part'  
+        WHEN Solvency_alt_act_descr = 'Cash and cash equivalents' THEN 'Cash and cash equivalents Part'  
+        WHEN Solvency_alt_act_descr IN ('Property (other than for own use)', 'Property, plant & equipement held for own use') THEN 'Properties'  
+        WHEN Solvency_alt_act_descr = 'Loans & mortgages to individuals' AND Investment_Category_Solvency IN ('Mortgages', 'Other Loans') THEN 'Loans & mortgages to individuals'  
+        WHEN Solvency_alt_act_descr = 'Loans on policies' THEN 'Loans on policies'  
+        WHEN assets_code_agr = 'Alan SA' THEN 'Equities-unlisted (excluded)'  
+        ELSE ''  
+    END  
+"""  
+  
+# Application de la transformation  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(  
+    "Instrument_lmt",  
+    F.expr(instrument_lmt_expr)  
+)
+
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(  
+    "Beta_Equities",  
+    F.when(  
+        F.col("instrument_lmt") == "Equities-listed",  
+        F.col("BETA") * F.col("Investment_SII_Value")  
+    ).otherwise(  
+        F.col("Beta_Equities") if "Beta_Equities" in AssetDBEntry_Conso_enriched.columns  
+        else F.lit(None)  
+    )  
+)  
+
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "Rating_Factor_Internal",
+    F.when(
+        F.col("solvency_alt_act_descr") != "Investment funds" ,
+        F.col("Rating_Factor")
+    ).otherwise(
+        F.col("Rating_Factor_Internal") if "Rating_Factor_Internal" in AssetDBEntry_Conso_enriched.columns
+        else F.lit(None))
+)
+
+
+# Assuming AssetDBEntry_Conso_enriched is already a Spark DataFrame  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(  
+    "RATING_SOLVENCY_INTERNAL",  
+    F.when(  
+        (F.col("solvency_alt_act_descr") == "Investment funds") &  
+        (F.col("rating_factor_internal").isNotNull()),  
+        F.col("Rating_Waterfall_Funds")  
+    ).otherwise(
+        F.col("RATING_SOLVENCY_INTERNAL") if "RATING_SOLVENCY_INTERNAL" in AssetDBEntry_Conso_enriched.columns
+        else F.lit(None))  
+)  
+  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(  
+    "rating_waterfall",  
+    F.when(  
+        (F.col("solvency_alt_act_descr") == "Investment funds") &  
+        (F.col("rating_factor_internal").isNotNull()),  
+        coalesce(F.col("RATING_SOLVENCY_INTERNAL"), F.col("RATING_SOLVENCY_EXTERNAL"), F.lit("NR"))  
+    ).otherwise(
+        F.col("rating_waterfall") if "rating_waterfall" in AssetDBEntry_Conso_enriched.columns
+        else F.lit(None))  
+)  
+  
+# Drop columns  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.drop("Internal_Rating_Factor", "Rating_Waterfall_Funds")  
+
+
+from pyspark.sql.functions import when, floor, ceil, datediff, lit, greatest, least  
+  
+# 1. Create REM_MAT with exact SAS conditions  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "REM_MAT",  
+    when(F.col("Rem_Mat_Funds").isNotNull(), F.col("Rem_Mat_Funds"))  
+    .when(F.col("Rem_Mat_Mortgages").isNotNull(), F.col("Rem_Mat_Mortgages"))  
+    .when(F.col("Asset_Redemption_Date_Agr").isNotNull(),  
+         datediff(F.col("ASSET_REDEMPTION_DATE_AGR"), F.col("reporting_date"))/360)  
+)  
+  
+# 2. Calculate REM_MAT_LOW with exact SAS conditions  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "REM_MAT_LOW",  
+    when(F.col("Rem_Mat_Funds").isNotNull(),  
+        least(lit(0), greatest(lit(0), floor(F.col("REM_MAT")))))  
+    .when(F.col("Rem_Mat_Mortgages").isNotNull(),  
+        least(lit(0), greatest(lit(0), floor(F.col("REM_MAT")))))  
+    .when(F.col("Asset_Redemption_Date_Agr").isNotNull(),  
+        least(lit(0), greatest(lit(0), floor(F.col("REM_MAT")))))  
+)
+  
+# 3. Calculate REM_MAT_UP with exact SAS conditions  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn("REM_MAT_UP",  
+    when(F.col("Rem_Mat_Funds").isNotNull(),  
+        greatest(F.col("REM_MAT_LOW"), least(lit(50), ceil(F.col("REM_MAT")))))  
+    .when(F.col("Rem_Mat_Mortgages").isNotNull(),  
+        greatest(F.col("REM_MAT_LOW"), least(lit(50), ceil(F.col("REM_MAT")))))
+    .when(F.col("Asset_Redemption_Date_Agr").isNotNull(),  
+        greatest(F.col("REM_MAT_LOW"), least(lit(50), ceil(F.col("REM_MAT")))))  
+)
+  
+# 4. Drop original columns  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.drop("Rem_Mat_Funds", "Rem_Mat_Mortgages")  
+
+
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+AssetDBEntry_Conso_enriched = spark.sql("""
+	select	a.*,
+			b.DEFAULT_PROB as DEFAULT_PROB_LOW,
+			c.DEFAULT_PROB as DEFAULT_PROB_UP
+	from AssetDBEntry_Conso_enriched a
+	left outer join DEFAULT_PROBABILITY b
+	on a.RATING_WATERFALL = b.RATING
+	and a.REM_MAT_LOW = b.MATURITY
+	left outer join DEFAULT_PROBABILITY c
+	on a.RATING_WATERFALL = c.RATING
+	and a.REM_MAT_UP = c.MATURITY;
+""")
+
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(
+    "DEFAULT_PROB",  
+    when(F.col("REM_MAT_LOW") == F.col("REM_MAT_UP"), F.col("DEFAULT_PROB_LOW"))  
+    .otherwise(
+        (((F.col("REM_MAT_UP") - F.col("REM_MAT")) * F.col("DEFAULT_PROB_LOW")) +  ((F.col("REM_MAT") - F.col("REM_MAT_LOW")) * F.col("DEFAULT_PROB_UP"))
+          if "DEFAULT_PROB" in AssetDBEntry_Conso_enriched.columns
+          else F.lit(None)
+    )))
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn("RATING_FACTOR_INTERNAL_DUR", F.col("DEFAULT_PROB") * 10000) 
+
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn(  
+"RATING_FACTOR_INTERNAL_DUR",  
+when(F.col("Solvency_alt_act_new") == "R0250", F.col("rating_factor_internal_mortgages"))  
+.otherwise(F.col("DEFAULT_PROB") * 10000)  
+)
+
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn("REMAINING_MATURITY_TIMES_IFRS_BV", F.col("REM_MAT") * F.col("Accouting_Val_IFRS_Accrued_Incl"))  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumn("RATING_FAC_INT_DUR_TIMES_IFRS_BV", F.col("RATING_FACTOR_INTERNAL_DUR") * F.col("Accouting_Val_IFRS_Accrued_Incl"))
+
+
+  
+# Drop and rename columns  
+columns_to_drop = [  
+    "DEFAULT_PROB_LOW", "DEFAULT_PROB_UP", "DEFAULT_PROB",  
+    "REM_MAT_LOW", "REM_MAT_UP", "rating_factor_internal_mortgages",  
+    "Rem_Mat_Mortgages"  
+]  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.drop(*columns_to_drop)  
+AssetDBEntry_Conso_enriched = AssetDBEntry_Conso_enriched.withColumnRenamed("REM_MAT", "REMAINING_MATURITY")
+AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+
+
+data_spreadlocks = spark.sql("""
+    SELECT	Entity_ID,
+            ALM_segment,
+            Asset_Master,
+            Asset_Master_ISIN,
+            sum(Quantity_Accounting) as quantity_accounting
+    from AssetDBEntry_Conso_enriched
+    where solvency_alt_act_new = "R0190" and BSM_split = "Forward Bonds"
+    group by 1,2,3,4;
+""")
+
+data_spreadlocks.createOrReplaceTempView("data_spreadlocks")
+
+
+data_bonds_exposure = spark.sql("""
+select	Entity_ID,
+			ALM_segment,
+			Assets_agr,
+			Isin_agr,
+			sum(Quantity_Accounting) as quantity_accounting,
+			sum(Accouting_Val_IFRS_Accrued_Incl) as ACCOUTING_VAL_IFRS_ACCRUED_INCL,
+			sum(RATING_FAC_INT_DUR_TIMES_IFRS_BV) as RATING_FAC_INT_DUR_TIMES_IFRS_BV
+	from AssetDBEntry_Conso_enriched
+	where solvency_alt_act_new in ("R0140","R0150","R0160","R170")
+	group by 1,2,3,4;
+""")
+data_bonds_exposure.createOrReplaceTempView("data_bonds_exposure")
+
+
+compute_spreadlocks = spark.sql("""
+    select	t1.*,
+                t2.quantity_accounting as quantity_exposure,
+                t2.ACCOUTING_VAL_IFRS_ACCRUED_INCL,
+                t2.RATING_FAC_INT_DUR_TIMES_IFRS_BV
+        from data_spreadlocks t1
+        left outer join data_bonds_exposure t2
+        on t1.Entity_ID = t2.Entity_ID
+        and t1.ALM_segment = t2.ALM_segment
+        and t1.Asset_Master = t2.Assets_agr
+        and t1.Asset_Master_ISIN = t2.Isin_agr;
+
+""")
+compute_spreadlocks.createOrReplaceTempView("compute_spreadlocks")
+
+
+
+
+
+
+
