@@ -1,0 +1,26 @@
+from pyspark.sql import functions as F
+
+target_schema = {
+    "amount": "decimal(10,2)",
+    "trans_date": "date",
+    "qty": "int",
+    # ...
+}
+
+row = df.filter(F.col("record_id") == 99072)  # or use monotonically_increasing_id if no natural key
+
+for colname, target_type in target_schema.items():
+    row = row.withColumn(
+        f"{colname}_cast_check",
+        F.when(
+            F.col(colname).isNotNull() & F.expr(f"try_cast({colname} as {target_type})").isNull(),
+            F.lit("CAST FAILS")
+        ).otherwise(F.lit("ok"))
+    )
+
+row.select([c for c in row.columns if c.endswith("_cast_check")]).show(truncate=False)
+bad_rows = df.filter(
+    F.col("amount").isNotNull() & F.expr("try_cast(amount as decimal(10,2))").isNull()
+)
+bad_rows.show()
+
