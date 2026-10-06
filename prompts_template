@@ -1,0 +1,294 @@
+import ipywidgets as widgets  
+from IPython.display import display as widget_display
+from IPython.display import clear_output  
+from datetime import datetime, timedelta  
+from dateutil.relativedelta import relativedelta
+import json
+
+
+# prompt_path = 'abfss://ref@stsandboxdwphprdwe001.dfs.core.windows.net/risk_engine/input/risk_engine/prompts'
+# config_path = f"{prompt_path}/prompt_config.json"  
+# df = spark.read.text(config_path)
+# prompt_config = json.loads(df.first()["value"])
+
+prompt_config = {'PROMPT_ID': {'THISRUN_ENVIRONMENT_ID': 'Please select an environment',
+  'THISRUN_CONTEXT_ID': 'Please select a context',
+  'THISRUN_CONFIG_ID': 'Please select a configuration',
+  'THISRUN_REPORTING_DATE': 'Please select a reporting date'},
+ 'PROMPT_LISTS': {'BELINS_ENV_DEMO': 'THISRUN_ENVIRONMENT_ID',
+  'CALC_BASE': 'THISRUN_CONTEXT_ID',
+  'BELINS_ENV_DEV': 'THISRUN_ENVIRONMENT_ID',
+  'BELINS_ENV_TEST': 'THISRUN_ENVIRONMENT_ID',
+  'CALC_IFRS17': 'THISRUN_CONTEXT_ID',
+  'CONFIG_BASE': 'THISRUN_CONFIG_ID',
+  'CONFIG_DEMO': 'THISRUN_CONFIG_ID'},
+ 'PROCESS_PROMPTS': {}}
+
+
+### remove later used for testing
+prompt_config["PROMPT_LISTS"]["ENV_DEV_PAUL"] = 'THISRUN_ENVIRONMENT_ID'
+
+prompt_config["PROMPT_ID"]["THISRUN_ENTITY_ID"] = 'Please select an entity'
+prompt_config["PROMPT_LISTS"]["BELINS"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["CONSO"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["CORONA"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["All Entities"] = 'THISRUN_ENTITY_ID'
+
+prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_SET"] = 'Please select a set of QRT Files'
+prompt_config["PROMPT_LISTS"]["Quarterly"] = 'THISRUN_QRT_IMPORT_SET'
+prompt_config["PROMPT_LISTS"]["Annual"] = 'THISRUN_QRT_IMPORT_SET'
+
+
+prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_TYPE"] = 'Please select a type of QRT Files'
+prompt_config["PROMPT_LISTS"]["QRT_INPUT"] = 'THISRUN_QRT_IMPORT_TYPE'
+prompt_config["PROMPT_LISTS"]["QRT_OUTPUT"] = 'THISRUN_QRT_IMPORT_TYPE'
+prompt_config["PROMPT_LISTS"]["QRT input & output files"] = 'THISRUN_QRT_IMPORT_TYPE'
+
+prompt_config["PROMPT_LISTS"]["CALC_DEMO"] = 'THISRUN_CONTEXT_ID'
+
+
+  
+class PYSPARKPrompts:  
+    def __init__(self,prompt_config):  
+        self.prompt_config = prompt_config
+        self.submitted = False  
+        self.values = {}  
+        self.create_widgets(prompt_config)
+  
+    def create_widgets(self,prompt_config):  
+        """Create all prompt widgets matching SAS structure"""  
+  
+        # Style for consistent look  
+        style = {'description_width': '250px'}  
+        layout = widgets.Layout(width='600px')  
+  
+        env_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_ENVIRONMENT_ID']
+
+        # 1. THISRUN_ENVIRONMENT_ID  
+        self.env_dropdown = widgets.Dropdown(  
+            options=env_options,  
+            value=env_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_ENVIRONMENT_ID"],  
+            style=style,  
+            layout=layout  
+        )  
+
+        context_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_CONTEXT_ID']
+
+        # 2. THISRUN_CONTEXT_ID  
+        self.context_dropdown = widgets.Dropdown(  
+            options=context_options,  
+            value=context_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_CONTEXT_ID"],  
+            style=style,  
+            layout=layout  
+        )  
+
+        config_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_CONFIG_ID']
+        # 3. THISRUN_CONFIG_ID  
+        self.config_dropdown = widgets.Dropdown(  
+            options=config_options,  
+            value=config_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_CONFIG_ID"],  
+            style=style,  
+            layout=layout  
+        )  
+
+        config_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_ENTITY_ID']
+        # 4. THISRUN_ENTITY_ID  
+        self.entity_dropdown = widgets.Dropdown(  
+            options=config_options,  
+            value=config_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_ENTITY_ID"],  
+            style=style,  
+            layout=layout  
+        )  
+
+        config_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_QRT_IMPORT_SET']
+        # 5. THISRUN_QRT_IMPORT_SET  
+        self.qrt_set_dropdown = widgets.Dropdown(  
+            options=config_options,  
+            value=config_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_SET"],  
+            style=style,  
+            layout=layout  
+        )  
+
+        config_options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == 'THISRUN_QRT_IMPORT_TYPE']
+        # 6. THISRUN_ENTITY_ID  
+        self.qrt_type_dropdown = widgets.Dropdown(  
+            options=config_options,  
+            value=config_options[0],  
+            description=prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_TYPE"],  
+            style=style,  
+            layout=layout  
+        )          
+  
+        # Calculate the last day of the current month  
+        today = datetime.today()  
+        last_day_of_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+        # Custom date picker (initially hidden)  
+        self.custom_date_create = widgets.DatePicker(  
+            description='Please select a period to create', 
+            value=last_day_of_month,  # Set default to month-end  
+            style=style,  
+            layout=layout,  
+            disabled=True  
+        )  
+  
+        # Submit button  
+        self.submit_btn = widgets.Button(  
+            description='Submit',  
+            button_style='success',  
+            tooltip='Click to submit parameters',  
+            icon='check',  
+            layout=widgets.Layout(width='200px', height='40px')  
+        )  
+  
+        # Output area  
+        self.output = widgets.Output()  
+  
+        # Event handlers  
+        self.custom_date_create.disabled = False
+        # self.period_create.observe(self.on_period_create_change, names='value')  
+        self.submit_btn.on_click(self.on_submit)  
+  
+    def on_period_create_change(self, change):  
+        """Enable/disable inputs based on period selection""" 
+        self.custom_date_create.disabled = False 
+
+  
+    # def calculate_period_date(self, period_text, n_months=1, custom_date=None):  
+    def calculate_period_date(self,custom_date=None):          
+        """Calculate the actual date based on period selection"""  
+        today = datetime.now()  
+        return custom_date.replace(day=1) if custom_date else today.replace(day=1)
+
+  
+    def on_submit(self, button):  
+        """Handle submit button click"""  
+        # Clear previous output  
+        with self.output:
+            clear_output()
+  
+            # Get values  
+            env_id = self.env_dropdown.value  
+            context_id = self.context_dropdown.value
+            config_id = self.config_dropdown.value              
+            entity_id = self.entity_dropdown.value              
+            qrt_set_id = self.qrt_set_dropdown.value              
+            qrt_type_id = self.qrt_type_dropdown.value                                                  
+            custom_date = self.custom_date_create.value  
+    
+            # Calculate actual dates  
+            create_date = self.calculate_period_date(custom_date)  
+    
+            # Store values  
+            self.values = {  
+                'THISRUN_ENVIRONMENT_ID': env_id,  
+                'THISRUN_CONTEXT_ID': context_id,   
+                'THISRUN_CONFIG_ID': config_id, 
+                'THISRUN_ENTITY_ID': entity_id,                                  
+                'THISRUN_QRT_IMPORT_SET': qrt_set_id,                                  
+                'THISRUN_QRT_IMPORT_TYPE': qrt_type_id,                                                                  
+                'THISRUN_REPORTING_DATE_RAW': custom_date  
+            }  
+    
+            self.submitted = True  
+    
+            # Display results in the output area  
+            
+            print("="*70)  
+            print("PROJECT PROMPTS SUBMITTED")  
+            print("="*70)  
+            print(f"\n📋 CREATE Parameters:")  
+            print(f"  Environment:        {env_id}") 
+            print(f"  Context:        {context_id}")  
+            print(f"  Config:        {config_id}")  
+            if self.values['THISRUN_REPORTING_DATE_RAW']:  
+                print(f"  Custom Date:        {custom_date.strftime('%Y-%m-%d')}")  
+
+            print("\n" + "="*70)  
+            print("✓ Parameters ready for processing")  
+            print("="*70)  
+
+            # Show how to access values  
+            print("\n💡 Access values using:")  
+            print("   prompts.values['THISRUN_ENVIRONMENT_ID']")  
+            print("   prompts.values['THISRUN_CONTEXT_ID']")  
+            print("   prompts.values['THISRUN_CONFIG_ID']")              
+            print("   prompts.values['THISRUN_ENTITY_ID']")              
+            print("   prompts.values['THISRUN_QRT_IMPORT_SET']")              
+            print("   prompts.values['THISRUN_QRT_IMPORT_TYPE']")                                                  
+            print("   prompts.values['THISRUN_REPORTING_DATE_RAW']")  
+  
+    def display(self):  
+        """Display all widgets"""  
+        # Clear any existing display  
+        # clear_output()  
+  
+        # Header  
+        header = widgets.HTML(  
+            value="<h2 style='color: #2e5cb8;'>🔧 Project Prompts</h2>"  
+                  "<p style='color: #666;'>Please configure the parameters below:</p>"  
+        )  
+  
+        widget_display(header)  
+  
+        # Section 1: Enter Parameters  
+        section1_header = widgets.HTML(  
+            value="<h3 style='color: #4a90e2; margin-top: 20px;'>📝 Enter Parameters</h3>"  
+        )  
+        widget_display(section1_header)  
+        widget_display(self.env_dropdown) 
+        widget_display(self.context_dropdown)   
+        widget_display(self.config_dropdown)           
+        widget_display(self.entity_dropdown)           
+        widget_display(self.qrt_set_dropdown)           
+        widget_display(self.qrt_type_dropdown)                                   
+        widget_display(self.custom_date_create)  
+  
+        # Submit button  
+        widget_display(widgets.HTML(value="<div style='margin-top: 20px;'></div>"))  
+        widget_display(self.submit_btn)  
+  
+        # Output area  
+        widget_display(self.output)  
+  
+    def get_values(self):  
+        """Return the submitted values"""  
+        if not self.submitted:  
+            print("⚠️  Please submit the form first!")  
+            return None  
+        return self.values  
+
+prompts = PYSPARKPrompts(prompt_config)
+prompts.display()
+
+
+
+------------------------
+if 'prompts' in globals() and prompts.submitted:
+    THISRUN_REPORTING_DATE_RAW = prompts.values['THISRUN_REPORTING_DATE_RAW']
+    print("THISRUN_REPORTING_DATE_RAW ",THISRUN_REPORTING_DATE_RAW)
+
+    thisrun_config_id = prompts.values['THISRUN_CONFIG_ID'] 
+    print("THISRUN_CONFIG_ID ",thisrun_config_id)
+
+
+    thisrun_context_id = prompts.values['THISRUN_CONTEXT_ID'] 
+    print("thisrun_context_id",thisrun_context_id)
+
+    thisrun_environment_id = prompts.values['THISRUN_ENVIRONMENT_ID']
+    print("thisrun_environment_id ",thisrun_environment_id)
+
+    thisrun_entity_id = prompts.values['THISRUN_ENTITY_ID']
+    print("thisrun_entity_id ",thisrun_entity_id)
+
+    thisrun_qrt_import_type = prompts.values['THISRUN_QRT_IMPORT_TYPE']
+    print("thisrun_qrt_import_type ",thisrun_qrt_import_type)
+
+
+    thisrun_qrt_import_set = prompts.values['THISRUN_QRT_IMPORT_SET']
+    print("thisrun_qrt_import_set ",thisrun_qrt_import_set)
