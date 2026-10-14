@@ -292,3 +292,322 @@ if 'prompts' in globals() and prompts.submitted:
 
     thisrun_qrt_import_set = prompts.values['THISRUN_QRT_IMPORT_SET']
     print("thisrun_qrt_import_set ",thisrun_qrt_import_set)
+
+
+----------------------promppt config-----------------------------------
+
+
+# =============================================================================
+# Notebook: /prompts/prompt_config
+# Purpose : Holds prompt_config only. Edit prompts here.
+#           (Content identical to the original notebook.)
+# =============================================================================
+import json
+
+# prompt_path = 'abfss://ref@stsandboxdwphprdwe001.dfs.core.windows.net/risk_engine/input/risk_engine/prompts'
+# config_path = f"{prompt_path}/prompt_config.json"
+# df = spark.read.text(config_path)
+# prompt_config = json.loads(df.first()["value"])
+
+prompt_config = {'PROMPT_ID': {'THISRUN_ENVIRONMENT_ID': 'Please select an environment',
+  'THISRUN_CONTEXT_ID': 'Please select a context',
+  'THISRUN_CONFIG_ID': 'Please select a configuration',
+  'THISRUN_REPORTING_DATE': 'Please select a reporting date'},
+ 'PROMPT_LISTS': {'BELINS_ENV_DEMO': 'THISRUN_ENVIRONMENT_ID',
+  'CALC_BASE': 'THISRUN_CONTEXT_ID',
+  'BELINS_ENV_DEV': 'THISRUN_ENVIRONMENT_ID',
+  'BELINS_ENV_TEST': 'THISRUN_ENVIRONMENT_ID',
+  'CALC_IFRS17': 'THISRUN_CONTEXT_ID',
+  'CONFIG_BASE': 'THISRUN_CONFIG_ID',
+  'CONFIG_DEMO': 'THISRUN_CONFIG_ID'},
+ 'PROCESS_PROMPTS': {}}
+
+
+### remove later used for testing
+prompt_config["PROMPT_LISTS"]["ENV_DEV_PAUL"] = 'THISRUN_ENVIRONMENT_ID'
+
+prompt_config["PROMPT_ID"]["THISRUN_ENTITY_ID"] = 'Please select an entity'
+prompt_config["PROMPT_LISTS"]["BELINS"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["CONSO"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["CORONA"] = 'THISRUN_ENTITY_ID'
+prompt_config["PROMPT_LISTS"]["All Entities"] = 'THISRUN_ENTITY_ID'
+
+prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_SET"] = 'Please select a set of QRT Files'
+prompt_config["PROMPT_LISTS"]["Quarterly"] = 'THISRUN_QRT_IMPORT_SET'
+prompt_config["PROMPT_LISTS"]["Annual"] = 'THISRUN_QRT_IMPORT_SET'
+
+
+prompt_config["PROMPT_ID"]["THISRUN_QRT_IMPORT_TYPE"] = 'Please select a type of QRT Files'
+prompt_config["PROMPT_LISTS"]["QRT_INPUT"] = 'THISRUN_QRT_IMPORT_TYPE'
+prompt_config["PROMPT_LISTS"]["QRT_OUTPUT"] = 'THISRUN_QRT_IMPORT_TYPE'
+prompt_config["PROMPT_LISTS"]["QRT input & output files"] = 'THISRUN_QRT_IMPORT_TYPE'
+
+prompt_config["PROMPT_LISTS"]["CALC_DEMO"] = 'THISRUN_CONTEXT_ID'
+
+
+# -----------------------------------------------------------------------------
+# PROCESS_PROMPTS: which prompts each task shows (rename tasks as you like).
+# Use in a notebook:  prompts = PYSPARKPrompts(prompt_config, process='BASE_RUN')
+# -----------------------------------------------------------------------------
+prompt_config["PROCESS_PROMPTS"]["BASE_RUN"] = [
+    'THISRUN_ENVIRONMENT_ID',
+    'THISRUN_CONTEXT_ID',
+    'THISRUN_REPORTING_DATE',
+]
+
+prompt_config["PROCESS_PROMPTS"]["QRT_IMPORT"] = [
+    'THISRUN_ENVIRONMENT_ID',
+    'THISRUN_CONTEXT_ID',
+    'THISRUN_REPORTING_DATE',
+    'THISRUN_ENTITY_ID',
+    'THISRUN_QRT_IMPORT_SET',
+    'THISRUN_QRT_IMPORT_TYPE',
+]
+
+
+
+
+------------------------------------prompt engine-------------------------------
+# =============================================================================
+# Notebook: /prompts/prompt_engine
+# Purpose : Holds the PYSPARKPrompts class only.
+#           Widgets are built from prompt_config, so prompts can be removed
+#           (from the config, or per notebook) without touching this code.
+#           With the full config, look and output are the same as before.
+# =============================================================================
+import ipywidgets as widgets
+from IPython.display import display as widget_display
+from IPython.display import clear_output
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+import json
+
+
+class PYSPARKPrompts:
+
+    # The reporting date is a date picker, always shown last,
+    # and stored as THISRUN_REPORTING_DATE_RAW (as in the original).
+    DATE_PROMPT_ID = 'THISRUN_REPORTING_DATE'
+    DATE_VALUE_KEY = 'THISRUN_REPORTING_DATE_RAW'
+    DATE_LABEL = 'Please select a period to create'
+
+    # Original attribute names, kept so existing code like prompts.env_dropdown still works
+    WIDGET_ATTRS = {
+        'THISRUN_ENVIRONMENT_ID': 'env_dropdown',
+        'THISRUN_CONTEXT_ID': 'context_dropdown',
+        'THISRUN_CONFIG_ID': 'config_dropdown',
+        'THISRUN_ENTITY_ID': 'entity_dropdown',
+        'THISRUN_QRT_IMPORT_SET': 'qrt_set_dropdown',
+        'THISRUN_QRT_IMPORT_TYPE': 'qrt_type_dropdown',
+        'THISRUN_REPORTING_DATE': 'custom_date_create',
+    }
+
+    # Lines printed in the submit summary (same text as the original)
+    SUMMARY_LINES = {
+        'THISRUN_ENVIRONMENT_ID': "  Environment:        {}",
+        'THISRUN_CONTEXT_ID': "  Context:        {}",
+        'THISRUN_CONFIG_ID': "  Config:        {}",
+    }
+
+    def __init__(self, prompt_config, process=None, include=None, exclude=None):
+        """
+        prompt_config : the config dict from /prompts/prompt_config
+        process       : optional task name from PROCESS_PROMPTS (shows that task's prompts)
+        include       : optional list of prompt IDs to show (only these)
+        exclude       : optional list of prompt IDs to hide
+        With none of these, all prompts in PROMPT_ID are shown (original behaviour).
+        """
+        self.prompt_config = prompt_config
+        self.process = process
+        if process is not None:
+            process_prompts = prompt_config.get('PROCESS_PROMPTS', {})
+            if process not in process_prompts:
+                raise ValueError(f"Unknown process '{process}'. "
+                                 f"Available: {list(process_prompts.keys())}")
+            include = process_prompts[process]
+        self.submitted = False
+        self.values = {}
+        self.prompt_ids = self._select_prompt_ids(include, exclude)
+        self.create_widgets(prompt_config)
+
+    def _select_prompt_ids(self, include, exclude):
+        all_ids = list(self.prompt_config['PROMPT_ID'].keys())
+
+        for name, given in (('include', include), ('exclude', exclude)):
+            unknown = [p for p in (given or []) if p not in all_ids]
+            if unknown:
+                raise ValueError(f"{name}: unknown prompt IDs {unknown}. Available: {all_ids}")
+
+        ids = [p for p in all_ids if include is None or p in include]
+        ids = [p for p in ids if p not in (exclude or [])]
+
+        # Date picker always last, as in the original form
+        if self.DATE_PROMPT_ID in ids:
+            ids = [p for p in ids if p != self.DATE_PROMPT_ID] + [self.DATE_PROMPT_ID]
+        return ids
+
+    def create_widgets(self, prompt_config):
+        """Create one widget per selected prompt"""
+
+        # Style for consistent look
+        style = {'description_width': '250px'}
+        layout = widgets.Layout(width='600px')
+
+        self.widgets = {}
+
+        for prompt_id in self.prompt_ids:
+            if prompt_id == self.DATE_PROMPT_ID:
+                # Calculate the last day of the current month
+                today = datetime.today()
+                last_day_of_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+                widget = widgets.DatePicker(
+                    description=self.DATE_LABEL,
+                    value=last_day_of_month,  # Set default to month-end
+                    style=style,
+                    layout=layout,
+                    disabled=False
+                )
+            else:
+                options = [key for key, value in prompt_config['PROMPT_LISTS'].items() if value == prompt_id]
+                if not options:
+                    raise ValueError(f"No options found in PROMPT_LISTS for '{prompt_id}'. "
+                                     f"Add options, or remove it from PROMPT_ID.")
+                widget = widgets.Dropdown(
+                    options=options,
+                    value=options[0],
+                    description=prompt_config["PROMPT_ID"][prompt_id],
+                    style=style,
+                    layout=layout
+                )
+
+            self.widgets[prompt_id] = widget
+            if prompt_id in self.WIDGET_ATTRS:
+                setattr(self, self.WIDGET_ATTRS[prompt_id], widget)
+
+        # Submit button
+        self.submit_btn = widgets.Button(
+            description='Submit',
+            button_style='success',
+            tooltip='Click to submit parameters',
+            icon='check',
+            layout=widgets.Layout(width='200px', height='40px')
+        )
+
+        # Output area
+        self.output = widgets.Output()
+
+        # Event handlers
+        self.submit_btn.on_click(self.on_submit)
+
+    def on_period_create_change(self, change):
+        """Enable/disable inputs based on period selection"""
+        if hasattr(self, 'custom_date_create'):
+            self.custom_date_create.disabled = False
+
+    def calculate_period_date(self, custom_date=None):
+        """Calculate the actual date based on period selection"""
+        today = datetime.now()
+        return custom_date.replace(day=1) if custom_date else today.replace(day=1)
+
+    def on_submit(self, button):
+        """Handle submit button click"""
+        with self.output:
+            clear_output()
+
+            # Store values (only for the prompts shown)
+            self.values = {}
+            for prompt_id, widget in self.widgets.items():
+                key = self.DATE_VALUE_KEY if prompt_id == self.DATE_PROMPT_ID else prompt_id
+                self.values[key] = widget.value
+
+            self.submitted = True
+
+            # Display results in the output area
+            print("="*70)
+            print("PROJECT PROMPTS SUBMITTED")
+            print("="*70)
+            print(f"\n📋 CREATE Parameters:")
+            for prompt_id, line in self.SUMMARY_LINES.items():
+                if prompt_id in self.values:
+                    print(line.format(self.values[prompt_id]))
+            custom_date = self.values.get(self.DATE_VALUE_KEY)
+            if custom_date:
+                print(f"  Custom Date:        {custom_date.strftime('%Y-%m-%d')}")
+
+            print("\n" + "="*70)
+            print("✓ Parameters ready for processing")
+            print("="*70)
+
+            # Show how to access values
+            print("\n💡 Access values using:")
+            for key in self.values:
+                print(f"   prompts.values['{key}']")
+
+    def display(self):
+        """Display all widgets"""
+        header = widgets.HTML(
+            value="<h2 style='color: #2e5cb8;'>🔧 Project Prompts</h2>"
+                  "<p style='color: #666;'>Please configure the parameters below:</p>"
+        )
+        widget_display(header)
+
+        section1_header = widgets.HTML(
+            value="<h3 style='color: #4a90e2; margin-top: 20px;'>📝 Enter Parameters</h3>"
+        )
+        widget_display(section1_header)
+        for widget in self.widgets.values():
+            widget_display(widget)
+
+        # Submit button
+        widget_display(widgets.HTML(value="<div style='margin-top: 20px;'></div>"))
+        widget_display(self.submit_btn)
+
+        # Output area
+        widget_display(self.output)
+
+    def get_values(self):
+        """Return the submitted values"""
+        if not self.submitted:
+            print("⚠️  Please submit the form first!")
+            return None
+        return self.values
+
+--------------------------------usage-----------------------
+# =============================================================================
+# How to use the prompts in ANY notebook (each block = one Synapse cell)
+# Note: in Synapse, %run must be the only line in its cell.
+# =============================================================================
+
+# ---- Cell 1 ----
+%run /prompts/prompt_config
+
+# ---- Cell 2 ----
+%run /prompts/prompt_engine
+
+# ---- Cell 3: pick ONE of these ----
+
+# a) Prompts for one task, as defined in PROCESS_PROMPTS (recommended)
+prompts = PYSPARKPrompts(prompt_config, process='BASE_RUN')      # env, context, date
+# prompts = PYSPARKPrompts(prompt_config, process='QRT_IMPORT')  # + entity and QRT prompts
+
+# All prompts (same as the original notebook)
+# prompts = PYSPARKPrompts(prompt_config)
+
+# b) Hide some prompts in this notebook only
+# prompts = PYSPARKPrompts(prompt_config, exclude=['THISRUN_QRT_IMPORT_SET', 'THISRUN_QRT_IMPORT_TYPE'])
+
+# c) Show only the prompts this notebook needs
+# prompts = PYSPARKPrompts(prompt_config, include=['THISRUN_ENVIRONMENT_ID', 'THISRUN_CONTEXT_ID', 'THISRUN_REPORTING_DATE'])
+
+prompts.display()
+
+# ---- Cell 4 (after clicking Submit) ----
+# Creates the same variables as before (thisrun_environment_id, thisrun_context_id, ...,
+# THISRUN_REPORTING_DATE_RAW) but only for the prompts that were shown,
+# so it never fails when a prompt is removed.
+if 'prompts' in globals() and prompts.submitted:
+    for key, value in prompts.values.items():
+        var_name = key if key == 'THISRUN_REPORTING_DATE_RAW' else key.lower()
+        globals()[var_name] = value
+        print(var_name, value)
