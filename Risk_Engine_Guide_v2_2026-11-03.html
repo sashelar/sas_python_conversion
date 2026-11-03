@@ -1,0 +1,1604 @@
+<!doctype html>
+<html lang="en"><head>
+    
+  <style id="claude-scrollbar">@layer claude-scrollbar{*{scrollbar-width:thin}html{scrollbar-color:rgb(128 128 128 / 50%) transparent}}</style><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-size:14px}[hidden]{display:none!important}img{max-width:100%}</style><title>Risk Engine Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+/* Layout: page header + sticky two-tab bar; each tab = side index + reading column */
+:root{
+  --bg:#F5F7F9; --surface:#FFFFFF; --ink:#18222E; --muted:#56657A; --line:#DCE2EA;
+  --accent:#1D5C8C; --accent-soft:#E3EEF7; --amber:#9A5B0C; --amber-soft:#FBF0DE;
+  --green:#2D6A4F; --green-soft:#E2F1E8; --codebg:#EEF2F6;
+  --f-display:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1120px;margin:0 auto}
+a{color:var(--accent)}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--f-mono);font-size:.86rem;line-height:1.55;background:var(--codebg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:16px 0 0;color:var(--ink)}
+pre .c{color:var(--muted)}
+pre .k{color:var(--accent)}
+
+header.top{padding-block:36px 20px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 8px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(2rem,4vw,2.75rem);font-weight:650}
+h2{font-size:1.65rem;font-weight:650;margin-bottom:12px}
+h3{font-size:1.15rem;font-weight:650;margin-bottom:6px}
+.lede{font-size:1.1rem;color:var(--muted);max-width:62ch;margin:12px 0 0}
+
+/* tabs */
+.tabbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px}
+.tab{appearance:none;border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:12px 18px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.tab small{font-weight:400;font-size:12px;color:var(--muted)}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+
+.panelwrap{display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px;padding-block:28px 80px}
+nav.index{position:sticky;top:calc(84px + env(safe-area-inset-top,0px));align-self:start;font-size:14px}
+nav.index p{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+nav.index ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;border-left:1px solid var(--line)}
+nav.index a{display:block;padding:5px 12px;color:var(--muted);text-decoration:none;margin-left:-1px;border-left:2px solid transparent}
+nav.index a:hover,nav.index a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+main{min-width:0}
+section{padding-block:12px 36px;border-bottom:1px solid var(--line);margin-bottom:28px;scroll-margin-top:96px}
+section:last-of-type{border-bottom:0}
+section > p,.prose{max-width:66ch}
+.oneliner{background:var(--accent-soft);border-left:3px solid var(--accent);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:16px 0}
+.oneliner b{color:var(--accent)}
+.crosslink{font-size:.92rem;color:var(--muted);margin-top:14px}
+.crosslink button{appearance:none;border:0;background:none;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0}
+
+/* pipeline */
+.pipe{display:grid;margin-top:20px}
+.stage{display:grid;grid-template-columns:44px minmax(0,1fr);gap:16px}
+.stage .rail{display:flex;flex-direction:column;align-items:center}
+.stage .dot{width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);color:var(--accent);font-family:var(--f-mono);font-size:13px;font-weight:500;display:grid;place-items:center;flex:none}
+.stage .rail::after{content:"";flex:1;width:2px;background:var(--line);margin:4px 0}
+.stage:last-child .rail::after{display:none}
+.stage .body{padding-bottom:22px;min-width:0}
+.stage .body h3{margin-top:4px}
+.stage .body p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;font-family:var(--f-body)}
+.tag.done{background:var(--green-soft);color:var(--green)}
+.tag.next{background:var(--amber-soft);color:var(--amber)}
+
+.boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.box .code-big{font-family:var(--f-mono);font-size:1.25rem;color:var(--accent);font-weight:500}
+.box .what{font-weight:600}
+.box p{margin:0;color:var(--muted);font-size:.95rem}
+.meter{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted)}
+.meter .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}
+.meter .bar i{display:block;height:100%;background:var(--amber)}
+
+.tbl{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;min-width:600px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.mono{font-family:var(--f-mono);font-size:.88rem;white-space:nowrap;color:var(--accent)}
+
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}
+.panel h3{font-family:var(--f-body);font-size:1rem;font-weight:600}
+.panel p,.panel ul{margin:6px 0 0;color:var(--muted);font-size:.95rem}
+.panel ul{padding-left:18px}
+.example{font-family:var(--f-mono);font-size:.9rem;background:var(--surface);border:1px dashed var(--line);border-radius:6px;padding:12px 14px;margin-top:16px;max-width:66ch}
+.example span{display:inline-block;min-width:150px;color:var(--muted)}
+
+.chain{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:18px}
+.chain .node{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;flex:1 1 150px;min-width:0}
+.chain .node b{display:block;font-size:.95rem}
+.chain .node small{color:var(--muted);font-size:.85rem;display:block;margin-top:2px}
+.chain .node .v{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);margin-top:8px;display:block;overflow-wrap:anywhere}
+.chain .arrow{align-self:center;color:var(--muted);font-family:var(--f-mono)}
+.note{font-size:.92rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:20px;max-width:66ch}
+.warn{background:var(--amber-soft);border-left:3px solid var(--amber);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:20px 0 0;font-size:.95rem}
+.warn b{color:var(--amber)}
+
+.gsearch{width:100%;max-width:420px;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);margin-top:8px}
+.gsearch:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+dl.gloss{display:grid;grid-template-columns:minmax(140px,200px) minmax(0,1fr);margin:16px 0 0;border-top:1px solid var(--line)}
+dl.gloss dt,dl.gloss dd{padding:10px 0;border-bottom:1px solid var(--line);margin:0}
+dl.gloss dt{font-weight:600;padding-right:16px}
+dl.gloss dd{color:var(--muted)}
+.empty{color:var(--muted);font-style:italic;margin-top:12px}
+
+@media (max-width:860px){
+  .panelwrap{grid-template-columns:minmax(0,1fr);gap:8px;padding-block:20px 60px}
+  nav.index{position:static}
+  nav.index ol{display:flex;flex-wrap:wrap;gap:6px;border:0}
+  nav.index a{border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:0;background:var(--surface)}
+  .boxes,.cols2{grid-template-columns:minmax(0,1fr)}
+  dl.gloss{grid-template-columns:minmax(0,1fr)}
+  dl.gloss dt{border-bottom:0;padding-bottom:0}
+  .chain .arrow{display:none}
+  .tab{padding:10px 12px}
+}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<style>.__cwhr-sel{outline:1px solid hsl(40 70% 40%) !important;outline-offset:0;}html[data-cwhr-mode]:not(#__cwhr_),html[data-cwhr-mode] :not(#__cwhr_){cursor:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%3E%3Cpath%20d%3D'M12%20.5h0A11.5%2011.5%200%200%201%2023.5%2012v0A11.5%2011.5%200%200%201%2012%2023.5H2.5a2%202%200%200%201-2-2V12A11.5%2011.5%200%200%201%2012%20.5Z'%20fill%3D'%23fff'%20stroke%3D'rgba(0%2C0%2C0%2C0.22)'%20stroke-width%3D'1'%2F%3E%3C%2Fsvg%3E") 1 23, url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAACjklEQVR4AbRWS2gaURR9TGpiFTUEWpKQkA+EruqizWcRSBRT/G8KKpXiyo0ra1fVNiDFLmypFUo3iht/iO4Uay1FGwtFECl1p6KWLly4CGqrSMTY+wRFQ7WhGYd7Zu697845b+7M8B6BJh+UxcXFG3a7XeTxeHQAC+C12+1+ZLPZhHgMbp8FjLWxAkaj8U48Hg8lEomfIpEoLBaLLTKZTAd4LJFI3kD8HsZ+xGKxoMFgYI9T+JvAtUAg8FylUn3hcDj8ra0t6vLyMmKxWIhCofSAfZyDMRqXy+Wr1eqvPp/vKYjMAEZsRMDpdN6MRCKf+Xz+8cbGBm2kckIAtXShUGgKh8Mnfr9/Ybh0IKDT6a4vLS19EggE+wwGY7jmUj6TyUTQyv35+fmP0MbBexkISKVS+97e3u1LsU0oAo67Go3G1i/pCZjN5t3Nzc0H/zPzPlH/ip8EWvbQYrHs4hwWmN3e3n62traGfZy7MtbX12fYbPYTIKIQOzs7C6urq/cgINVWVlaO4EtjEXq9nken06mksgMZtJthtVp5xNzcHBsEIEWu0Wg0RKVS2USz2WTigFx6hPCkMTfRarXgB6WQzd/j63Q6bdK+nB7j0KnRaCCCIMpTE4D2oEql8m1qAvV6/VSr1U5PIJvN+qFjv6fyBIVC4ZfD4XgJAmekC9RqNZROp1+FQqESCCDSBWCVO1EoFC8wOQZpAnjm0Wj0O/xX94H4HNAzotvtNnreFU6lUgllMplAMpnclcvlp8NURC6Xi8BLGc5N9NvtNqpWq6hcLqN8Pn8OLUkAMe/g4EAOG4WzizcTJpPpA6zFIpfL9Ra2I45/IRgM2lKp1LtisXjs9XpvHR4eHimVythF4n78BwAA//8r8OPFAAAABklEQVQDAPCY8Oae0TJxAAAAAElFTkSuQmCC") 1 23, default !important;}html[data-cwhr-mode][data-cwhr-composing]:not(#__cwhr_),html[data-cwhr-mode][data-cwhr-composing] :not(#__cwhr_){cursor:default !important;}</style></head><body id="artifacts-component-root-html"><header class="top gut"><div class="inner">
+  <p class="eyebrow">Risk Engine · Belgian insurance entity</p>
+  <h1>Risk Engine Guide</h1>
+  <p class="lede">How the Risk Engine prepares the insurer's investment data. Pick the view that suits you.</p>
+</div></header>
+
+<div class="tabbar gut"><div class="inner tabs" role="tablist" aria-label="Guide views">
+  <button class="tab" role="tab" id="tab-business" aria-controls="business" aria-selected="true">Business explanation<small>What it means, in plain words</small></button>
+  <button class="tab" role="tab" id="tab-technical" aria-controls="technical" aria-selected="false" tabindex="-1">Technical setup<small>How it is built</small></button>
+</div></div>
+
+<!-- ===================== BUSINESS ===================== -->
+<div class="gut" role="tabpanel" id="business" aria-labelledby="tab-business"><div class="inner panelwrap">
+<nav class="index" aria-label="Business contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#b-why">Why this exists</a></li>
+    <li><a href="#b-journey">The data journey</a></li>
+    <li><a href="#b-extract">Extract Data</a></li>
+    <li><a href="#b-boxes">The three share boxes</a></li>
+    <li><a href="#b-instruments">Instrument types</a></li>
+    <li><a href="#b-views">Three ways to value</a></li>
+    <li><a href="#b-enrich">Data Enrichment</a></li>
+    <li><a href="#b-refs">Step 1: the rulebooks</a></li>
+    <li><a href="#b-table">Step 2: the enriched table</a></li>
+    <li><a href="#b-segment">Step 3: splitting by segment</a></li>
+    <li><a href="#b-rating">Step 4: one rating per asset</a></li>
+    <li><a href="#b-country">Step 5: country details</a></li>
+    <li><a href="#b-fixed">Step 6: fixed income type</a></li>
+    <li><a href="#b-liquid">Step 7: liquid or not</a></li>
+    <li><a href="#b-rules">Step 8: applying the rulebook</a></li>
+    <li><a href="#b-shocks">Step 9: initial shocks</a></li>
+    <li><a href="#b-ao-refs">Assets only: step 1</a></li>
+    <li><a href="#b-ao-limits">Assets only: step 2</a></li>
+    <li><a href="#b-ao-bgaap">Assets only: step 3</a></li>
+    <li><a href="#b-ao-rest">Assets only: remaining steps</a></li>
+    <li><a href="#b-glossary">Glossary</a></li>
+  </ol>
+</nav>
+<main>
+<section id="b-why">
+  <h2>Why this exists</h2>
+  <p>An insurer collects premiums from customers and invests that money until it has to pay claims. The regulator, the National Bank of Belgium (NBB), wants to be sure that even if those investments lose value, the insurer can still pay everyone.</p>
+  <p>The European rulebook for this is <b>Solvency II</b>. In Belgium it is written into the law of 13 March 2016 on the supervision of insurance companies. It asks one central question: <i>does the insurer have a big enough safety cushion?</i></p>
+  <div class="oneliner"><b>In one line:</b> the Risk Engine collects the insurer's investments, sorts them by type and risk, and prepares the figures that show how big the safety cushion must be.</div>
+</section>
+
+<section id="b-journey" class="">
+  <h2>The data journey</h2>
+  <p>The first phase, <b>source data preparation</b>, gets the insurer's data ready for the risk calculations. It runs in two stages, each taking the result of the previous one and adding to it.</p>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">01</div></div><div class="body">
+      <h3>Extract Data <span class="tag done">documented</span></h3>
+      <p>Pulls the list of investments from the source systems and sorts the shares.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">02</div></div><div class="body">
+      <h3>Data Enrichment <span class="tag next">in progress</span></h3>
+      <p>Adds extra information to each investment, step by step. Runs in one of two modes: assets and liabilities together, or assets only.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">··</div></div><div class="body">
+      <h3>Calculation Engine&nbsp;<span class="tag next">to follow</span></h3>
+      <p>What happens after source data preparation will be added to this guide as it is documented.</p></div></div>
+  </div>
+</section>
+
+<section id="b-extract">
+  <h2>Extract Data</h2>
+  <p>The first stage gathers the raw material in three steps.</p>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">01</div></div><div class="body">
+      <h3>Collect the investment list</h3>
+      <p>Copies the full list of investments the insurer holds. Everything after this works from that list.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">02</div></div><div class="body">
+      <h3>Sort the shares</h3>
+      <p>Picks out the shares and sorts them into three boxes by how risky and how easy to price they are. That decides how much safety money must be kept aside. <a href="#b-boxes">See the three boxes.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">04</div></div><div class="body">
+      <h3>Collect the accounting values</h3>
+      <p>Takes the same kinds of investments and collects their values from the Belgian accounting books and from the international (IFRS 9) books, side by side in Excel, so differences can be explained. <a href="#b-views">See why the values differ.</a></p></div></div>
+  </div>
+</section>
+
+<section id="b-boxes">
+  <h2>The three share boxes</h2>
+  <p>Shares can crash, so the regulator asks the insurer to keep extra money aside for them. Riskier shares need a bigger cushion. Each box has a code from the Solvency II balance sheet report.</p>
+  <div class="boxes">
+    <div class="box"><span class="code-big">R0110</span><span class="what">Listed shares</span>
+      <p>Shares on a stock exchange. The price is visible every day and they are easy to sell.</p>
+      <div class="meter">Safety money kept aside: about 39% of value<div class="bar"><i style="width:39%"></i></div></div></div>
+    <div class="box"><span class="code-big">R0120</span><span class="what">Unlisted shares</span>
+      <p>Shares in private companies. No daily price, and hard to sell quickly.</p>
+      <div class="meter">Safety money kept aside: about 49% of value<div class="bar"><i style="width:49%"></i></div></div></div>
+    <div class="box"><span class="code-big">R0090</span><span class="what">Participations</span>
+      <p>Large stakes in related companies, often the insurer's own subsidiaries. "Part of the family" more than an investment.</p>
+      <div class="meter">Treated separately (strategic stakes about 22%)<div class="bar"><i style="width:22%"></i></div></div></div>
+  </div>
+  <p class="note">Percentages are the standard Solvency II shocks before a small market-based adjustment. They show the size of the drop the insurer must be able to survive.</p>
+</section>
+
+<section id="b-instruments">
+  <h2>Instrument types</h2>
+  <p>The engine works with five kinds of investment.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Instrument</th><th>In plain words</th><th>How sure is the price?</th></tr></thead>
+    <tbody>
+      <tr><td><b>Bonds</b></td><td>A loan to a government or company that pays interest and is repaid at the end</td><td>Usually very sure</td></tr>
+      <tr><td><b>Convertible bonds</b></td><td>A loan that can later be swapped for shares. Half loan, half share</td><td>Fairly sure</td></tr>
+      <tr><td><b>Funds</b></td><td>A ready-made basket of investments managed by someone else</td><td>Depends on what's inside</td></tr>
+      <tr><td><b>Rights</b></td><td>A short-lived ticket to buy new shares, usually at a discount</td><td>Very sure if listed</td></tr>
+      <tr><td><b>Shares</b></td><td>A piece of ownership in a company</td><td>Very sure if listed, an estimate if not</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">"Very sure" means the price is read straight off a stock exchange (accountants call this IFRS Level 1). "An estimate" means it comes from a model, which is the least certain (Level 3).</p>
+</section>
+
+<section id="b-views">
+  <h2>Three ways to value the same investment</h2>
+  <p>The insurer reports the same investments in three "languages", each for a different audience.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>View</th><th>Who reads it</th><th>How it values things</th></tr></thead>
+    <tbody>
+      <tr><td><b>Solvency II</b></td><td>The regulator (NBB)</td><td>Today's market price: what could we sell it for now?</td></tr>
+      <tr><td><b>Belgian GAAP</b></td><td>Belgian statutory accounts</td><td>Mostly the purchase price, written down if it loses value. Cautious.</td></tr>
+      <tr><td><b>IFRS 9</b></td><td>Group financial statements</td><td>Market price or purchase price, depending on why the investment is held</td></tr>
+    </tbody>
+  </table></div>
+  <div class="example">
+    <div><span>Share bought for</span>€100</div>
+    <div><span>Trading today at</span>€150</div>
+    <div><span>Belgian GAAP shows</span>€100</div>
+    <div><span>Solvency II shows</span>€150</div>
+    <div><span>IFRS 9 shows</span>€150 (usually)</div>
+  </div>
+  <p class="note">Auditors and the regulator expect every gap between these views to be explainable. The Excel file produced in step 04 is the starting point for that comparison.</p>
+</section>
+
+<section id="b-enrich">
+  <h2>Data Enrichment</h2>
+  <p>The second stage adds information to each investment in a series of small steps, like an assembly line where each station adds one part. It has two modes:</p>
+  <div class="cols2">
+    <div class="panel"><h3>Assets and liabilities <span class="tag done">documented</span></h3><p>Enriches both what the insurer owns and what it owes to policyholders.</p></div>
+    <div class="panel"><h3>Assets only <span class="tag done">documented</span></h3><p>Enriches only the investments. <a href="#b-ao-refs">See its steps.</a></p></div>
+  </div>
+  <p class="prose" style="margin-top:18px">Before each run, the user chooses the entity, environment and reporting date from simple menus. The engine then runs the same steps every time, so results can be reproduced and checked.</p>
+  <p class="note">Steps 1 to 9 of the assets and liabilities mode are described below. Further steps will be added as each program is documented.</p>
+  <p class="crosslink">Interested in how this is built? <button type="button" data-go="technical">Open the technical setup.</button></p>
+</section>
+
+<section id="b-refs">
+  <h2>Enrichment step 1: loading the rulebooks</h2>
+  <p>Before adding information to the investments, the engine loads the rulebooks that say how each investment should be labelled. They are kept in Excel files, so the business team can maintain them without changing any code.</p>
+  <p>Each run uses the rulebook version chosen in the menus at the start. A past run can therefore always be repeated with exactly the same rules.</p>
+  <div class="cols2">
+    <div class="panel"><h3>Business rules</h3><p>Decide which label each investment gets for each kind of report. Each rule also says which investments it applies to, for example only the shares and bonds on certain lines of the Solvency II balance sheet.</p></div>
+    <div class="panel"><h3>Translation tables</h3><p>Turn short codes into readable descriptions: what kind of investment it is, how creditworthy the issuer is, and which country it comes from.</p></div>
+  </div>
+
+  <h3 style="margin-top:28px">The labels the business rules give</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Label</th><th>The question it answers</th></tr></thead>
+    <tbody>
+      <tr><td><b>Investment category (Solvency)</b></td><td>Which Solvency II category does this investment belong to?</td></tr>
+      <tr><td><b>Infrastructure type</b></td><td>Is it an investment in infrastructure, such as energy, transport or telecoms? Qualifying infrastructure can need less safety money.</td></tr>
+      <tr><td><b>Fixed income sector</b></td><td>For bonds: who borrowed the money? A government, a bank, a company?</td></tr>
+      <tr><td><b>ALM risk card category</b></td><td>Where does it appear on the internal risk dashboards that compare investments with future payments to customers?</td></tr>
+      <tr><td><b>Annual report asset type</b></td><td>How is it shown in the annual report?</td></tr>
+      <tr><td><b>RGLA sub-portfolio</b></td><td>Which internal sub-portfolio does it belong to?</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">The translation tables</h3>
+  <div class="cols2">
+    <div class="panel"><h3>Investment type (CIC)</h3><p>Every investment carries a short type code. The table translates it into words in two levels: the main family (government bonds, corporate bonds, equity, investment funds, property, call options, credit derivatives, repos) and the exact kind within it (for equity: common equity, equity rights or other equity).</p></div>
+    <div class="panel"><h3>Rating and country</h3><p>The rating table translates credit ratings from agencies (such as AAA or BB) into the scale the engine uses. The country table adds information about the country of the issuer.</p></div>
+  </div>
+  <div class="example">
+    <div><span>Code on the asset</span>BE31</div>
+    <div><span>Country</span>Belgium, listed there</div>
+    <div><span>Main family</span>Equity</div>
+    <div><span>Exact kind</span>Common equity</div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> step 1 loads the rulebook and dictionary that every later step uses to label the investments.</div>
+</section>
+
+<section id="b-table">
+  <h2>Enrichment step 2: building the enriched table</h2>
+  <p>This step takes the full list of what the insurer owns and owes, and adds labels to every line so later reports can group and total them.</p>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">a</div></div><div class="body">
+      <h3>Keep one copy of each position</h3>
+      <p>The database keeps each investment once for every set of accounting books. The engine keeps only the IFRS 9 copy, so nothing is counted twice.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">b</div></div><div class="body">
+      <h3>Attach the balance sheet line and its value</h3>
+      <p>Each position gets the name of its Solvency II balance sheet line, such as "Cash and cash equivalents", and its Solvency II value.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">c</div></div><div class="body">
+      <h3>Group into business categories</h3>
+      <p>The regulator's balance sheet lines are regrouped into the broader categories the business uses internally.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">d</div></div><div class="body">
+      <h3>Add the readable investment type</h3>
+      <p>Finally, the CIC dictionary from step 1 adds the investment family and exact kind in words.</p></div></div>
+  </div>
+
+  <h3 style="margin-top:20px">Examples of the business grouping</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Regulator's balance sheet line</th><th>Business category</th><th>Why they belong together</th></tr></thead>
+    <tbody>
+      <tr><td>Cash and cash equivalents</td><td><b>Govies and Cash</b></td><td>"Govies" means government bonds. Both are very safe and quick to turn into money.</td></tr>
+      <tr><td>Loans on policies</td><td><b>Mortgages</b></td><td>Both are loans the insurer has given: to policyholders against their policy, or to home buyers.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="oneliner"><b>In one line:</b> step 2 produces one clean table where every position has its official balance sheet line, its Solvency II value, a business category and a readable investment type.</div>
+</section>
+
+<section id="b-segment">
+  <h2>Enrichment step 3: splitting by segment</h2>
+  <p>The insurer manages its investments in separate pots, called <b>ALM segments</b>. Each pot backs a specific group of customer promises, for example the life insurance business. To check that each pot has the right investments for its promises, every investment must sit in the right pot.</p>
+  <p>Some investments are recorded in one place but really belong to several pots. Mortgages are the main example. This step splits such positions across the segments using a distribution key, so each pot gets its fair share.</p>
+  <div class="example">
+    <div><span>Mortgage portfolio</span>€100m, recorded once</div>
+    <div><span>Distribution key</span>e.g. 70% / 30%</div>
+    <div><span>Segment A gets</span>€70m</div>
+    <div><span>Segment B gets</span>€30m</div>
+  </div>
+  <p class="note">Figures are illustrative. The real split comes from the distribution key used in the program.</p>
+  <div class="oneliner"><b>In one line:</b> step 3 makes sure each investment, or each share of one, is counted in the segment whose customer promises it supports.</div>
+</section>
+
+<section id="b-rating">
+  <h2>Enrichment step 4: one rating per asset</h2>
+  <p>A credit rating is a grade for how likely a borrower is to repay, from AAA (very safe) downwards. The same bond can have different grades from different agencies, or none at all. The risk calculations need exactly one.</p>
+  <p>This step uses a <b>waterfall</b>: an agreed order of preference. The engine looks for the first source in the list, and if that is missing it falls to the next one, like water running down steps. Every asset ends up with one rating, chosen the same way every time.</p>
+  <div class="example">
+    <div><span>Preferred source</span>not available</div>
+    <div><span>Next source</span>A</div>
+    <div><span>Rating used</span>A</div>
+  </div>
+  <p class="note">The order of preference shown is illustrative. The real order is defined in the rating reference file loaded in step 1, which also translates the different agencies' grades into one common scale.</p>
+  <div class="oneliner"><b>In one line:</b> step 4 gives every asset a single, consistently chosen credit rating, which drives how much safety money bonds and loans need.</div>
+</section>
+
+<section id="b-country">
+  <h2>Enrichment step 5: country details</h2>
+  <p>Each position gets information about its country, such as the country name and the continent, from the country table loaded in step 1.</p>
+  <p>This makes it possible to see where the money is invested: how much is in Belgium, in the rest of Europe or elsewhere. It helps spot too much concentration in one region, and some regulatory treatments depend on where the issuer is based.</p>
+  <div class="example">
+    <div><span>Country code</span>BE</div>
+    <div><span>Country</span>Belgium</div>
+    <div><span>Continent</span>Europe</div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> step 5 adds where in the world each investment sits.</div>
+</section>
+
+<section id="b-fixed">
+  <h2>Enrichment step 6: fixed income type</h2>
+  <p><b>Fixed income</b> means investments that pay a regular, predictable income, mainly bonds. This step gives each of these positions a short label for the kind of borrower behind it, based on its Solvency II balance sheet line.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Balance sheet line</th><th>Fixed income type</th><th>In plain words</th></tr></thead>
+    <tbody>
+      <tr><td>Government bonds</td><td><b>Sovereign</b></td><td>Money lent to states</td></tr>
+      <tr><td>Corporate bonds</td><td><b>Corp Fin</b></td><td>Money lent to companies and financial institutions</td></tr>
+      <tr><td>Investment funds</td><td><b>FI Fund</b></td><td>Bond funds: a basket of loans managed by someone else</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px">The borrower type matters because the risk is different. A state is usually less likely to default than a company, and the regulator asks for less safety money on many government bonds.</p>
+  <div class="oneliner"><b>In one line:</b> step 6 labels each bond-type investment by who borrowed the money.</div>
+</section>
+
+<section id="b-liquid">
+  <h2>Enrichment step 7: liquid or not</h2>
+  <p>An investment is <b>liquid</b> when it can be sold quickly at a known price. The insurer needs enough liquid investments to pay customers on time, even if many claims arrive at once.</p>
+  <p>This step labels each position using how sure its price is, the same price levels described earlier:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Price level</th><th>Meaning</th><th>Label</th></tr></thead>
+    <tbody>
+      <tr><td>Level 1</td><td>Price read straight off an active market</td><td><b>Liquid</b></td></tr>
+      <tr><td>Level 2</td><td>Price derived from similar investments</td><td><b>Illiquid</b></td></tr>
+      <tr><td>Level 3</td><td>Price estimated with a model</td><td><b>Illiquid</b></td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px">The logic: if there is an active market quoting a price every day, the investment can be sold quickly. If not, selling it may take time or require a discount.</p>
+  <div class="oneliner"><b>In one line:</b> step 7 marks each investment as liquid or illiquid, so the insurer can see how much it could turn into cash quickly.</div>
+</section>
+
+<section id="b-rules">
+  <h2>Enrichment step 8: applying the rulebook</h2>
+  <p>In step 1 the engine loaded the business rules from Excel. This is where they are used. For each kind of label, the rules look at each investment and decide which value it gets.</p>
+  <p>Each rule says two things: <b>which investments it applies to</b> (for example only certain balance sheet lines) and <b>what to do with them</b>. Rules are applied group by group, for example the Solvency investment category, strategic or non-strategic participations, infrastructure type and the ALM risk card categories.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Kind of rule</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><b>If … then</b></td><td>When the condition is met, set the label.</td></tr>
+      <tr><td><b>If … then … else</b></td><td>Set one label when the condition is met, another when it is not.</td></tr>
+      <tr><td><b>Delete</b></td><td>Remove positions that should not be in the table.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="example">
+    <div><span>Applies to</span>shares and participations, but not bond funds</div>
+    <div><span>Does</span>set the matching Solvency investment category</div>
+  </div>
+  <p class="note">A simplified reading of a real rule. The actual conditions are written in the rulebook itself.</p>
+  <div class="cols2">
+    <div class="panel"><h3>Why keep rules in Excel?</h3><ul><li>The business team can change a rule without a developer.</li><li>Every change is visible in one file, not spread through code.</li><li>Each configuration keeps its own version, so past results can be repeated.</li></ul></div>
+    <div class="panel"><h3>What changes in the data</h3><p>Every position now carries the labels that reports need, all decided by the same rulebook. Later reports simply group and total by these labels.</p></div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> step 8 applies the business team's own rulebook to give every investment its reporting labels.</div>
+</section>
+
+<section id="b-shocks">
+  <h2>Enrichment step 9: initial shocks</h2>
+  <p>A <b>shock</b> is a "what if" change applied to the data, such as "what if share prices fell by 25%?". Applying shocks shows how the insurer's position would look after a bad market event, which is the heart of measuring risk.</p>
+  <p>Like the business rules, the shocks are kept in an Excel rulebook. Each shock rule says <b>which positions</b> it applies to and <b>how to change them</b>:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Kind of change</th><th>What it does</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><b>Replace</b></td><td>Set a new value, text or number</td><td>Set a rating to AA</td></tr>
+      <tr><td><b>Add</b></td><td>Add an amount to the current value</td><td>Add 1.5 percentage points to a yield</td></tr>
+      <tr><td><b>Multiply</b></td><td>Change the value by a percentage</td><td>Lower a market value by 25%</td></tr>
+      <tr><td><b>Plain rule</b></td><td>Apply a formula written in the rule</td><td>Any other adjustment</td></tr>
+      <tr><td><b>Delete</b></td><td>Remove positions from the shocked view</td><td>Exclude out-of-scope positions</td></tr>
+    </tbody>
+  </table></div>
+  <div class="example">
+    <div><span>Market value today</span>€1,000</div>
+    <div><span>Shock rule</span>multiply, −25%</div>
+    <div><span>Market value after shock</span>€750</div>
+  </div>
+  <p class="note">Examples are illustrative. The actual shocks and their sizes are defined in the shock rulebook.</p>
+  <div class="oneliner"><b>In one line:</b> step 9 applies the agreed "what if" scenarios to the data, so the impact of a market shock can be measured.</div>
+</section>
+
+<section id="b-ao-refs">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Step 1: loading the rulebooks</h2>
+  <p>The assets only mode starts the same way: it loads the same business rules and translation tables as the assets and liabilities mode. On top of that it loads three extra reference tables.</p>
+
+  <div class="cols2">
+    <div class="panel"><h3>Portfolio</h3><p>Every investment is assigned to a pool of money (an "affectation"), such as a life insurance product line. This table says which big portfolio each pool belongs to: <b>Life</b>, <b>Non-life</b> or <b>General</b> (the insurer's own free money).</p></div>
+    <div class="panel"><h3>Fund table</h3><p>Some pools are separately managed funds, mainly group pension funds for employers and public bodies. This table gives each of them a fund code, so their investments can be followed on their own.</p></div>
+  </div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Pool of money (affectation)</th><th>Portfolio</th></tr></thead>
+    <tbody>
+      <tr><td>Belins FREE</td><td>General</td></tr>
+      <tr><td>Belins CLASSIC LIFE IND</td><td>Life</td></tr>
+      <tr><td>Belins NON LIFE</td><td>Non-life</td></tr>
+      <tr><td>CORONA LEVEN</td><td>Life</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">A few examples from the portfolio table, which lists over 50 pools.</p>
+
+  <h3 style="margin-top:28px">Default probability</h3>
+  <p class="prose">This table gives the chance that a borrower stops paying, depending on its credit rating and on how many years are left until the loan is repaid. A lower rating or a longer period means a higher chance. For each combination it gives a central value plus a low and a high estimate.</p>
+  <div class="example">
+    <div><span>Borrower rated</span>AAA</div>
+    <div><span>Repaid in 1 year</span>0.00005% chance of default</div>
+    <div><span>Repaid in 10 years</span>0.01%</div>
+    <div><span>Repaid in 30 years</span>0.075%</div>
+  </div>
+  <p class="note">Values from the AAA rows of the table. They stop rising after 30 years.</p>
+  <div class="oneliner"><b>In one line:</b> the assets only mode loads the same rulebooks plus three extra tables that say which portfolio and fund each investment belongs to, and how likely each borrower is to default.</div>
+</section>
+
+<section id="b-ao-limits">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Step 2: loading the investment limits</h2>
+  <p>The insurer's investment policy sets <b>limits</b>: the most it may invest in one country, one government, one company group or one sector. This step loads those limits so that later steps can check the portfolio against them.</p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Limit</th><th>The question it answers</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><b>Country</b></td><td>How much may we invest in one country, all issuers together?</td><td>Germany: €1.9bn</td></tr>
+      <tr><td><b>Sovereign</b></td><td>How much may we lend to one government?</td><td>Italy: €670m</td></tr>
+      <tr><td><b>Issuer by rating</b></td><td>How much may we lend to one company group? Better-rated groups get higher limits</td><td>AA: €150m, BBB: €50m (2019 values)</td></tr>
+      <tr><td><b>Sector</b></td><td>What share of the bonds, of the shares and of the total may sit in one sector?</td><td>Financials: 25% of bonds</td></tr>
+      <tr><td><b>Value at Risk</b></td><td>History of the group's Value at Risk, month by month</td><td>Monthly figures since end 2018</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="cols2">
+    <div class="panel"><h3>Approved exceptions</h3><p>Some holdings are allowed above the standard limits because a committee approved them. For example, bonds of Walloon, Brussels and Flemish public bodies approved by the ALCo in April 2018, or one loan fund approved for €170m. The tables record the approved amount and who approved it.</p></div>
+    <div class="panel"><h3>Limits change over time</h3><p>Each limit carries a date. When the policy changes, a new row is added rather than the old one overwritten. For example, the AA issuer limit went from €150m (2019) to €110m (2022). The engine uses the limit valid on the reporting date.</p></div>
+  </div>
+
+  <h3 style="margin-top:28px">Three extra risk measures</h3>
+  <div class="cols2">
+    <div class="panel"><h3>Beta</h3><p>How strongly a share moves with the stock market. A beta of 1 moves with the market, 0.5 moves half as much, 1.2 moves 20% more.</p></div>
+    <div class="panel"><h3>WARF</h3><p>The average credit quality of a fund, turned into one number. The higher the number, the riskier: an A-rated fund scores about 130, a B-rated fund about 2,700.</p></div>
+    <div class="panel"><h3>WARF for mortgages</h3><p>The same measure for the mortgage portfolio, with its average remaining life: a score of 69 and about 14.5 years.</p></div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> step 2 loads the investment policy's limits, the approved exceptions and three risk measures, so the portfolio can be checked against them.</div>
+</section>
+
+<section id="b-ao-bgaap">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Step 3: adding the Belgian accounting values</h2>
+  <p>Earlier, the Extract Data stage collected each investment's value from the Belgian accounting books ("BGAAP Annex 21"). This step brings those values into the asset table.</p>
+  <p>Some smaller group companies, such as Interfinance and Auxipar, keep their books in a separate accounting package (Winbooks) rather than the main portfolio system. Their holdings arrive as Excel balance sheets, which this step also adds, so the picture covers every company in the group.</p>
+  <p>Every investment stays in the table. Where a Belgian accounting value exists it is added next to the market value, so both views of the same investment sit side by side.</p>
+  <div class="example">
+    <div><span>Investment</span>a share bought for €100</div>
+    <div><span>Market value</span>€150</div>
+    <div><span>Belgian accounting value</span>€100 (added in this step)</div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> step 3 puts the Belgian accounting value next to each investment's market value.</div>
+</section>
+
+<section id="b-ao-rest">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>The remaining steps</h2>
+  <p>After its three own steps, the assets only mode follows the same assembly line as the assets and liabilities mode, with one extra step that adds the portfolio and fund labels.</p>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">4</div></div><div class="body"><h3>Build the enriched table</h3><p>Balance sheet line, Solvency II value, business category and investment type. <a href="#b-table">Same as step 2 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">5</div></div><div class="body"><h3>Split by segment</h3><p><a href="#b-segment">Same as step 3 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">6</div></div><div class="body"><h3>One rating per asset</h3><p><a href="#b-rating">Same as step 4 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">7</div></div><div class="body"><h3>Country details</h3><p><a href="#b-country">Same as step 5 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">8</div></div><div class="body"><h3>Fixed income type</h3><p><a href="#b-fixed">Same as step 6 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">9</div></div><div class="body"><h3>Liquid or not</h3><p><a href="#b-liquid">Same as step 7 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">10</div></div><div class="body"><h3>Portfolio and fund labels <span class="tag next">assets only</span></h3><p>Each investment gets its portfolio (Life, Non-life or General) and, for separately managed funds such as the group pension funds, its fund code. Both come from the tables loaded in assets only step 1.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">11</div></div><div class="body"><h3>Apply the rulebook</h3><p><a href="#b-rules">Same as step 8 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">12</div></div><div class="body"><h3>Initial shocks</h3><p><a href="#b-shocks">Same as step 9 above.</a></p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">13</div></div><div class="body"><h3>Limit monitoring report <span class="tag next">assets only</span></h3><p>The final step compares the fully enriched portfolio with the investment limits loaded in step 2: how much is invested per country, government, company group and sector, against what the policy allows. It shows where the insurer is within its limits and where it comes close or goes over. Details will be added once the program is documented.</p></div></div>
+  </div>
+  <div class="oneliner"><b>In one line:</b> the assets only mode reuses the same enrichment steps, adds portfolio and fund labels, and ends with a report that checks the portfolio against the investment limits.</div>
+</section>
+
+<section id="b-glossary">
+  <h2>Glossary</h2>
+  <label for="gq" style="display:block;color:var(--muted)">Search a term</label>
+  <input id="gq" class="gsearch" type="search" placeholder="e.g. SCR, NBB, Belgian GAAP" autocomplete="off">
+  <dl class="gloss" id="gl">
+    <dt>Solvency II</dt><dd>The EU rulebook that checks insurers have enough capital to pay claims, even in a crisis.</dd>
+    <dt>NBB</dt><dd>National Bank of Belgium, the supervisor of Belgian insurers.</dd>
+    <dt>SCR</dt><dd>Solvency Capital Requirement: the size of the safety cushion the insurer must hold.</dd>
+    <dt>Participation</dt><dd>A large stake in a related company, such as a subsidiary.</dd>
+    <dt>IFRS Level 1</dt><dd>A price read directly from an active stock exchange. The most reliable kind.</dd>
+    <dt>IFRS Level 3</dt><dd>A price estimated with an internal model. The least certain kind.</dd>
+    <dt>Belgian GAAP</dt><dd>Belgian local accounting rules, used for the statutory accounts.</dd>
+    <dt>IFRS 9</dt><dd>The international accounting rule for financial investments, used in group reporting.</dd>
+    <dt>Look-through</dt><dd>Looking inside a fund to treat each investment by what it really is.</dd>
+    <dt>Govies</dt><dd>Short for government bonds: loans to states, usually the safest investments.</dd>
+    <dt>Loans on policies</dt><dd>Money a policyholder borrows from the insurer, using their own life insurance policy as security.</dd>
+    <dt>CIC code</dt><dd>A short code on every investment that says where it is listed and what kind of investment it is.</dd>
+    <dt>Credit rating</dt><dd>An agency's grade for how likely a borrower is to repay, from AAA (very safe) downwards.</dd>
+    <dt>ALM</dt><dd>Asset-liability management: making sure investments match the payments owed to customers in size and timing.</dd>
+    <dt>Infrastructure</dt><dd>Investments in long-term public assets such as energy networks, roads or telecoms.</dd>
+    <dt>ALM segment</dt><dd>A separately managed pot of investments that backs a specific group of customer promises.</dd>
+    <dt>Repartition</dt><dd>Splitting one position across several segments according to a distribution key.</dd>
+    <dt>Waterfall rating</dt><dd>Choosing one credit rating per asset by going down an agreed list of sources until one is found.</dd>
+    <dt>Fixed income</dt><dd>Investments that pay a regular, predictable income, mainly bonds.</dd>
+    <dt>Sovereign</dt><dd>A government as borrower. Sovereign bonds are government bonds.</dd>
+    <dt>Liquidity</dt><dd>How quickly an investment can be sold at a fair price. Liquid means fast and easy, illiquid means slow or at a discount.</dd>
+    <dt>Business rule</dt><dd>A line in the rulebook that says which investments it applies to and which label they get.</dd>
+    <dt>Shock</dt><dd>A "what if" change applied to the data, for example a fall in share prices, to see its impact.</dd>
+    <dt>Affectation</dt><dd>The pool of money an investment is assigned to, such as a product line or a separately managed fund.</dd>
+    <dt>Default probability</dt><dd>The chance that a borrower stops paying within a given number of years.</dd>
+    <dt>Investment limit</dt><dd>The maximum the investment policy allows in one country, issuer or sector.</dd>
+    <dt>ALCo</dt><dd>Asset and Liability Committee: the committee that approves investment strategy and exceptions to limits.</dd>
+    <dt>Value at Risk (VaR)</dt><dd>The loss that should only be exceeded in a small share of cases, used as a summary of market risk.</dd>
+    <dt>Beta</dt><dd>How strongly a share's price moves compared with the whole stock market.</dd>
+    <dt>WARF</dt><dd>Weighted Average Rating Factor: one number for the average credit quality of a fund or portfolio. Higher means riskier.</dd>
+    <dt>Assets</dt><dd>What the insurer owns, such as shares, bonds and funds.</dd>
+    <dt>Liabilities</dt><dd>What the insurer owes, mainly future payments to policyholders.</dd>
+  </dl>
+  <p class="empty" id="ge" hidden="">No term matches that search.</p>
+</section>
+</main>
+</div></div>
+
+<!-- ===================== TECHNICAL ===================== -->
+<div class="gut" role="tabpanel" id="technical" aria-labelledby="tab-technical" hidden=""><div class="inner panelwrap">
+<nav class="index" aria-label="Technical contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#t-arch">Architecture</a></li>
+    <li><a href="#t-foundation">Shared foundation</a></li>
+    <li><a href="#t-prompts">Run parameters</a></li>
+    <li><a href="#t-paths">Dynamic paths</a></li>
+    <li><a href="#t-chain">View chaining</a></li>
+    <li><a href="#t-al01">A&amp;L 01: import references</a></li>
+    <li><a href="#t-al02">A&amp;L 02: table enrichment</a></li>
+    <li><a href="#t-al03">A&amp;L 03: segment repartition</a></li>
+    <li><a href="#t-al04">A&amp;L 04: waterfall rating</a></li>
+    <li><a href="#t-al05">A&amp;L 05: country info</a></li>
+    <li><a href="#t-al06">A&amp;L 06: fixed income</a></li>
+    <li><a href="#t-al07">A&amp;L 07: liquidity</a></li>
+    <li><a href="#t-al08">A&amp;L 08: business rules</a></li>
+    <li><a href="#t-al09">A&amp;L 09: initial shocks</a></li>
+    <li><a href="#t-ao01">Assets 01: import references</a></li>
+    <li><a href="#t-ao02">Assets 02: limit monitoring input</a></li>
+    <li><a href="#t-ao03">Assets 03: import BGAAP</a></li>
+    <li><a href="#t-ao-rest">Assets: remaining programs</a></li>
+    <li><a href="#t-extract">Extract Data programs</a></li>
+    <li><a href="#t-mapping">Classification rules</a></li>
+    <li><a href="#t-checks">Validation checks</a></li>
+  </ol>
+</nav>
+<main>
+<section id="t-arch">
+  <h2>Architecture</h2>
+  <p>Synapse notebooks orchestrated by main programs. <code>01_Extract_Data</code> and <code>data_enrichment</code> both sit under the phase folder <code>10_source_data_preparation</code>. Each main program calls its sub-programs with <code>%run</code>, so they all share one Spark session.</p>
+<pre><span class="c">Risk_Engine/</span>
+├── 99_functions/
+│   ├── all_imports        <span class="c"># libraries, Spark setup</span>
+│   └── all_functions      <span class="c"># reusable helpers, container registration</span>
+├── prompts/
+│   ├── prompt_config      <span class="c"># prompt definitions (Python dict)</span>
+│   └── prompt_engine      <span class="c"># PYSPARKPrompts widget class</span>
+└── 10_source_data_preparation/
+    ├── 01_Extract_Data/
+    │   ├── 01_extract_data_assetdb
+    │   ├── 02_List_Quoted_Equities
+    │   └── 04_Extract_Data_AssetDB_BGAAP
+    └── data_enrichment/
+        ├── assets_liabilities/ <span class="c"># mode 1 (documenting now)</span>
+        └── assets_only/        <span class="c"># mode 2</span></pre>
+</section>
+
+<section id="t-foundation">
+  <h2>Shared foundation</h2>
+  <div class="cols2">
+    <div class="panel"><h3><code>99_functions/all_imports</code></h3><p>One place for every library import and Spark configuration. Programs never import on their own.</p></div>
+    <div class="panel"><h3><code>99_functions/all_functions</code></h3><p>Reusable helpers called from every program. A fix here applies everywhere.</p></div>
+    <div class="panel"><h3>Container registration: <code>ref</code> and <code>stg</code></h3><p>The <code>abfss://</code> storage paths are registered once under logical names. Programs refer to <code>ref</code> (reference data) and <code>stg</code> (staging) and never see the raw paths.</p></div>
+    <div class="panel"><h3>Usage in every program</h3><p>Each program starts with the same <code>%run</code> cells, so the setup is identical across the engine.</p></div>
+  </div>
+<pre><span class="c"># Cell 1 (%run must be alone in its cell)</span>
+<span class="k">%run</span> Risk_Engine/99_functions/all_imports
+<span class="c"># Cell 2</span>
+<span class="k">%run</span> Risk_Engine/99_functions/all_functions</pre>
+</section>
+
+<section id="t-prompts">
+  <h2>Run parameters</h2>
+  <p>The prompt framework replaces hardcoded values with drop-downs. Prompts are defined once in <code>prompt_config</code>, and <code>prompt_engine</code> builds the widgets from that config.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Value</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">THISRUN_ENVIRONMENT_ID</td><td>Which environment to read from and write to (dev, test, …)</td></tr>
+      <tr><td class="mono">THISRUN_ENTITY_ID</td><td>Legal entity being processed</td></tr>
+      <tr><td class="mono">THISRUN_CONTEXT_ID</td><td>Run context</td></tr>
+      <tr><td class="mono">THISRUN_CONFIG_ID</td><td>Configuration set</td></tr>
+      <tr><td class="mono">THISRUN_REPORTING_DATE_RAW</td><td>Reporting date (date picker)</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="k">%run</span> /prompts/prompt_config
+<span class="k">%run</span> /prompts/prompt_engine
+
+prompts = PYSPARKPrompts(prompt_config)
+prompts.display()
+<span class="c"># after Submit</span>
+thisrun_entity_id = prompts.values[<span class="k">'THISRUN_ENTITY_ID'</span>]</pre>
+</section>
+
+<section id="t-paths">
+  <h2>Dynamic paths</h2>
+  <p>Input and output locations are assembled at runtime from the registered container plus the prompt values. Switching environment, entity or date changes every path without touching code.</p>
+  <div class="chain">
+    <div class="node"><b>Container</b><small>registered logical name</small><span class="v">ref / stg</span></div>
+    <span class="arrow" aria-hidden="true">+</span>
+    <div class="node"><b>Prompt values</b><small>chosen at run start</small><span class="v">env · entity · date</span></div>
+    <span class="arrow" aria-hidden="true">=</span>
+    <div class="node"><b>Runtime path</b><small>input or output</small><span class="v">stg/&lt;env&gt;/&lt;entity&gt;/&lt;date&gt;/…</span></div>
+  </div>
+  <p class="note">The exact folder pattern is defined in the helper functions. The example above shows the principle.</p>
+</section>
+
+<section id="t-chain">
+  <h2>View chaining</h2>
+  <p>Each program reads its inputs, applies one transformation and registers the result as a Spark temp view. The next program reads that view by name and enriches it further. Data stays in Spark memory between steps.</p>
+  <div class="chain">
+    <div class="node"><b>Program 1</b><small>read inputs, transform</small><span class="v">vw_step1</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>Program 2</b><small>vw_step1 + ref data</small><span class="v">vw_step2</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>Program N</b><small>vw_step(N-1) + …</small><span class="v">vw_stepN</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>Output</b><small>written to dynamic path</small><span class="v">stg/…</span></div>
+  </div>
+<pre><span class="c"># end of each program</span>
+df_enriched.createOrReplaceTempView(<span class="k">"vw_step2"</span>)
+
+<span class="c"># start of the next program</span>
+df = spark.table(<span class="k">"vw_step2"</span>)</pre>
+  <div class="warn"><b>Keep in mind:</b> temp views live only in the current Spark session. The chain works because sub-programs are called with <code>%run</code>. If a step is ever run as a separate pipeline notebook activity, the view won't exist there. Use a global temp view or a persisted table in that case.</div>
+  <p class="note">The two enrichment modes reuse this same backbone and differ only in which programs run. Per-program details of the assets and liabilities mode will be added as they are documented.</p>
+</section>
+
+<section id="t-al01">
+  <h2>A&amp;L 01: import references</h2>
+  <p>First program of the assets and liabilities mode. It reads the Excel reference files that drive the enrichment rules. The folder is built dynamically from the config ID selected in the prompts, so each configuration has its own versioned set of rules.</p>
+<pre><span class="c"># input folder (built at runtime)</span>
+period/configuration/&lt;THISRUN_CONFIG_ID&gt;/01_raw_files/
+├── business_rules
+└── Mapping_tables
+    ├── MAPPING_CIC
+    ├── rating
+    └── Country</pre>
+
+  <h3 style="margin-top:28px">business_rules</h3>
+  <p class="prose">Loaded here, applied in later programs. Rows are grouped by rule group. Each rule group produces one enrichment attribute. The <code>data_selection</code> column defines the dataset and filter a rule applies to, for example <code>solvency_alt_act_new</code> filtered on S.02.01 R codes.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Rule group</th><th>Attribute produced</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">investment_category_solvency</td><td>Solvency II investment category</td></tr>
+      <tr><td class="mono">infrastructure_type</td><td>Infrastructure classification (feeds reduced equity / spread shocks for qualifying infrastructure)</td></tr>
+      <tr><td class="mono">fixed_income_sector</td><td>Issuer sector for bonds</td></tr>
+      <tr><td class="mono">ALMriskCards_category</td><td>Category on the ALM risk cards</td></tr>
+      <tr><td class="mono">Annual_report_Asset_type</td><td>Asset type for the annual report</td></tr>
+      <tr><td class="mono">RGLA_sub_portfolio</td><td>RGLA sub-portfolio</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">Mapping_tables</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Worksheet</th><th>Content</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">MAPPING_CIC</td><td><code>cic_pos_1_desc</code> (category) plus code and description (sub-category)</td><td>Readable instrument type per asset</td></tr>
+      <tr><td class="mono">rating</td><td>Rating mapping</td><td>Harmonised credit quality per asset</td></tr>
+      <tr><td class="mono">Country</td><td>Country attributes</td><td>Issuer / listing country enrichment</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">CIC mapping levels</h3>
+  <p class="prose">The full CIC is four characters: two for the listing country, then category, then sub-category. <code>cic_pos_1</code> refers to the category character.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>cic_pos_1_desc</th><th>Example sub-categories</th></tr></thead>
+    <tbody>
+      <tr><td>Government bonds</td><td>Central government, supranational, regional</td></tr>
+      <tr><td>Corporate bonds</td><td>Common, convertible, covered</td></tr>
+      <tr><td>Equity</td><td><span class="mono" style="font-family:var(--f-mono)">31</span> Common equity, <span style="font-family:var(--f-mono)">33</span> Equity rights, <span style="font-family:var(--f-mono)">39</span> Other equity</td></tr>
+      <tr><td>Investment funds</td><td>Equity, debt, money market, real estate funds</td></tr>
+      <tr><td>Property</td><td>Own use, investment property</td></tr>
+      <tr><td>Call options</td><td>On equity, bonds, currency</td></tr>
+      <tr><td>Credit derivatives</td><td>Credit default swap</td></tr>
+      <tr><td>Repo</td><td>Repurchase agreements</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Sub-category examples beyond equity and credit default swap follow the standard CIC table. The exact rows in your MAPPING_CIC sheet take precedence.</p>
+</section>
+
+<section id="t-al02">
+  <h2>A&amp;L 02: table enrichment</h2>
+  <p>Program <code>02_Assets_And_Liabilities_Table_Enrichment</code> builds the enriched assets and liabilities table in four steps.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Step</th><th>Logic</th><th>Columns added</th></tr></thead>
+    <tbody>
+      <tr><td>1. Base selection</td><td>Assets and liabilities table filtered on <code>ledger = IFRS9</code>, one row per position</td><td>–</td></tr>
+      <tr><td>2. Solvency II line</td><td>Balance sheet line description and Solvency II value per position</td><td class="mono">solvency_alt_act_descr<br>INVESTMENT_SII_VALUE</td></tr>
+      <tr><td>3. Business category</td><td>Regroups balance sheet lines, e.g. Cash and cash equivalents → Govies and Cash, Loans on policies → Mortgages</td><td class="mono">Investment_category_solvency</td></tr>
+      <tr><td>4. CIC description</td><td>Join with <code>MAPPING_CIC</code> on the CIC codes, done last</td><td class="mono">cic_pos_1_desc<br>code descr</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="c"># illustrative outline, not the actual code</span>
+df = al_table.filter(col(<span class="k">"ledger"</span>) == <span class="k">"IFRS9"</span>)
+
+df = df.withColumn(<span class="k">"Investment_category_solvency"</span>,
+        when(col(<span class="k">"solvency_alt_act_descr"</span>) == <span class="k">"Cash and cash equivalents"</span>, <span class="k">"Govies and Cash"</span>)
+       .when(col(<span class="k">"solvency_alt_act_descr"</span>) == <span class="k">"Loans on policies"</span>, <span class="k">"Mortgages"</span>)
+       <span class="c"># … other lines</span>
+     )
+
+df = df.join(mapping_cic, on=&lt;cic code columns&gt;, how=<span class="k">"left"</span>)</pre>
+  <p class="note">The MAPPING_CIC join is a left join on the assets and liabilities table, so liabilities and other positions without a CIC code stay in the table with empty CIC descriptions.</p>
+  <p class="note">In this program <code>Investment_category_solvency</code> is derived in code from the balance sheet line. The <code>business_rules</code> file, which also has an <code>investment_category_solvency</code> rule group, is not used yet: it is applied in later programs.</p>
+</section>
+
+<section id="t-al03">
+  <h2>A&amp;L 03: segment repartition</h2>
+  <p>Program <code>03_Segment_Repartition</code> works on <code>alm_segment</code>. It selects specific positions and redistributes them across ALM segments using repartition keys. Main selection criteria seen in the program:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">CY_report</td><td class="mono">6001</td></tr>
+      <tr><td class="mono">alm_segment</td><td class="mono">BELINS LIFE HO, FIN_HYP</td></tr>
+      <tr><td class="mono">magnitude</td><td class="mono">BELINSINVES</td></tr>
+      <tr><td class="mono">CIC</td><td class="mono">XT95</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px">Mortgage positions are split by segment (P2 logic) using the mortgage repartition from Spyder.</p>
+  <p class="note">Documented at summary level. Detailed filter and split logic stays in the program itself.</p>
+</section>
+
+<section id="t-al04">
+  <h2>A&amp;L 04: waterfall rating</h2>
+  <p>Program <code>04_Add_Waterfall_Rating</code> joins the <code>rating</code> worksheet from <code>Mapping_tables</code> (loaded in A&amp;L 01) with the assets and liabilities table produced by A&amp;L 03.</p>
+  <div class="chain">
+    <div class="node"><b>A&amp;L 03 output</b><small>segment-split table</small><span class="v">assets &amp; liabilities</span></div>
+    <span class="arrow" aria-hidden="true">+</span>
+    <div class="node"><b>rating mapping</b><small>from Mapping_tables</small><span class="v">rating</span></div>
+    <span class="arrow" aria-hidden="true">=</span>
+    <div class="node"><b>A&amp;L 04 output</b><small>one rating per position</small><span class="v">waterfall rating added</span></div>
+  </div>
+  <p class="note">A waterfall rating typically picks the first available rating from a priority list of sources (for example issue rating, then issuer rating, then another agency) and maps it to a common scale such as the Solvency II credit quality steps. The exact priority and target scale are as defined in the rating sheet.</p>
+</section>
+
+<section id="t-al05">
+  <h2>A&amp;L 05: country info</h2>
+  <p>Program <code>05_Add_Country_Info</code> joins the <code>Country</code> worksheet from <code>Mapping_tables</code> (loaded in A&amp;L 01) with the assets and liabilities table from A&amp;L 04, adding country attributes such as country name and continent.</p>
+  <div class="chain">
+    <div class="node"><b>A&amp;L 04 output</b><small>with waterfall rating</small><span class="v">assets &amp; liabilities</span></div>
+    <span class="arrow" aria-hidden="true">+</span>
+    <div class="node"><b>Country mapping</b><small>from Mapping_tables</small><span class="v">Country</span></div>
+    <span class="arrow" aria-hidden="true">=</span>
+    <div class="node"><b>A&amp;L 05 output</b><small>country and continent added</small><span class="v">assets &amp; liabilities</span></div>
+  </div>
+</section>
+
+<section id="t-al06">
+  <h2>A&amp;L 06: fixed income</h2>
+  <p>Program <code>06_Add_Fixed_income</code> groups <code>solvency_alt_act_descr</code> values and stores the result in a new column <code>Fixed_Income_Type</code>.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>solvency_alt_act_descr</th><th>Fixed_Income_Type</th></tr></thead>
+    <tbody>
+      <tr><td>Government bonds</td><td class="mono">Sovereign</td></tr>
+      <tr><td>Corporate bonds</td><td class="mono">Corp Fin</td></tr>
+      <tr><td>Investment funds</td><td class="mono">FI Fund</td></tr>
+      <tr><td>…</td><td>other mappings as defined in the program</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="c"># illustrative outline</span>
+df = df.withColumn(<span class="k">"Fixed_Income_Type"</span>,
+        when(col(<span class="k">"solvency_alt_act_descr"</span>) == <span class="k">"Government bonds"</span>, <span class="k">"Sovereign"</span>)
+       .when(col(<span class="k">"solvency_alt_act_descr"</span>) == <span class="k">"Corporate bonds"</span>,  <span class="k">"Corp Fin"</span>)
+       .when(col(<span class="k">"solvency_alt_act_descr"</span>) == <span class="k">"Investment funds"</span>, <span class="k">"FI Fund"</span>)
+     )</pre>
+  <p class="note">Same pattern as <code>Investment_category_solvency</code> in A&amp;L 02: a regrouping of the balance sheet line, derived in code. <code>business_rules</code> also has a <code>fixed_income_sector</code> rule group, but it is not applied in A&amp;L 08, so <code>Fixed_Income_Type</code> from this program is the fixed income label in the table.</p>
+</section>
+
+<section id="t-al07">
+  <h2>A&amp;L 07: liquidity</h2>
+  <p>Program <code>07_Add_Liquidity</code> derives a new column <code>Liquidity_Assessment</code> from the IFRS 7 fair value level in <code>LEVEL_IFRS_7</code>.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>LEVEL_IFRS_7</th><th>Liquidity_Assessment</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">LEVEL 1</td><td class="mono">Liquid</td></tr>
+      <tr><td class="mono">LEVEL 2</td><td class="mono">Illiquid</td></tr>
+      <tr><td class="mono">LEVEL 3</td><td class="mono">Illiquid</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="c"># illustrative outline</span>
+df = df.withColumn(<span class="k">"Liquidity_Assessment"</span>,
+        when(col(<span class="k">"LEVEL_IFRS_7"</span>) == <span class="k">"LEVEL 1"</span>, <span class="k">"Liquid"</span>)
+       .when(col(<span class="k">"LEVEL_IFRS_7"</span>).isin(<span class="k">"LEVEL 2"</span>, <span class="k">"LEVEL 3"</span>), <span class="k">"Illiquid"</span>)
+     )</pre>
+  <p class="note">Positions with an empty <code>LEVEL_IFRS_7</code>, such as liabilities or cash, get no liquidity label unless the program handles them separately. IFRS 7 is the disclosure standard that reports the fair value levels defined in IFRS 13.</p>
+</section>
+
+<section id="t-al08">
+  <h2>A&amp;L 08: business rules</h2>
+  <p>Program <code>08_Apply_Business_Rules</code> applies the <code>Business_Rules</code> sheet of <code>business_rules.xlsx</code>, loaded in A&amp;L 01, to the assets and liabilities table from A&amp;L 07. It is a PySpark port of the original SAS macro <code>%Apply_Business_Rules</code>.</p>
+  <div class="chain">
+    <div class="node"><b>A&amp;L 07 output</b><small>fully enriched so far</small><span class="v">assets &amp; liabilities</span></div>
+    <span class="arrow" aria-hidden="true">+</span>
+    <div class="node"><b>business_rules</b><small>rule groups + data_selection</small><span class="v">from A&amp;L 01</span></div>
+    <span class="arrow" aria-hidden="true">=</span>
+    <div class="node"><b>A&amp;L 08 output</b><small>rule-based attributes added</small><span class="v">assets &amp; liabilities</span></div>
+  </div>
+<h3 style="margin-top:28px">Rule table columns</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">RULE_GROUP</td><td>Which attribute the rule belongs to. Matched case-insensitively and trimmed, because some values carry trailing spaces</td></tr>
+      <tr><td class="mono">RULE_ID</td><td>Rule identifier</td></tr>
+      <tr><td class="mono">RULE_TYPE</td><td><code>IF_THEN</code>, <code>IF_THEN_ELSE</code> or <code>DELETE</code></td></tr>
+      <tr><td class="mono">RULE_DATA_SELECTION</td><td>Condition selecting the rows the rule applies to</td></tr>
+      <tr><td class="mono">RULE_TO_APPLY</td><td><code>column = expression</code> assignments, separated by <code>;</code></td></tr>
+      <tr><td class="mono">RULE_RETURN</td><td>Assignments for the else branch</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">Rule groups, applied in sequence</h3>
+  <p class="prose">Each call takes the previous call's output as input, mirroring the chained SAS macro calls.</p>
+<pre>rule_groups = [
+    <span class="k">"Investment_Category_Solvency"</span>,
+    <span class="k">"Participation_Risk_Strat_NStrat"</span>,
+    <span class="k">"Infrastructure_type"</span>,
+    <span class="k">"ALMRiskCards_Category_1"</span>,
+    <span class="k">"ALMRiskCards_Category_2"</span>,
+]
+<span class="k">for</span> group <span class="k">in</span> rule_groups:
+    df = apply_business_rules(spark, in_impacted_df=df,
+                              in_business_rule_df=rules_df,
+                              in_business_rule_group=group)
+
+df.write.mode(<span class="k">"overwrite"</span>).saveAsTable(<span class="k">"dbo.Assets_Liabilities_enriched"</span>)</pre>
+
+  <h3 style="margin-top:28px">SAS to Spark SQL translation</h3>
+  <p class="prose">The rule text in Excel is written in SAS syntax. <code>translate_sas_expression()</code> rewrites it before it reaches <code>F.expr()</code>:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>SAS</th><th>Spark SQL</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">NE / EQ / GT / LT / GE / LE</td><td class="mono">!= / = / &gt; / &lt; / &gt;= / &lt;=</td></tr>
+      <tr><td class="mono">missing(col)</td><td class="mono">(col IS NULL OR col = '')</td></tr>
+      <tr><td class="mono">"text"</td><td class="mono">'text'</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="c"># example RULE_DATA_SELECTION, before translation</span>
+Solvency_alt_act_new in (<span class="k">"R0140"</span>,<span class="k">"R0150"</span>,<span class="k">"R0160"</span>,<span class="k">"R0170"</span>,<span class="k">"R0260"</span>)
+  and BSM_split eq <span class="k">"Govies"</span>
+
+<span class="c"># after translation</span>
+Solvency_alt_act_new in (<span class="k">'R0140'</span>,<span class="k">'R0150'</span>,<span class="k">'R0160'</span>,<span class="k">'R0170'</span>,<span class="k">'R0260'</span>)
+  and BSM_split = <span class="k">'Govies'</span></pre>
+  <div class="warn"><b>Keep in mind:</b> the translator covers the SAS patterns present in the rule file today. New rules using other SAS syntax, such as <code>input()</code>, <code>put()</code>, date literals like <code>'01JAN2024'd</code> or <code>^=</code>, need an extra translation rule. With many rules per group, a <code>.checkpoint()</code> or <code>.persist()</code> between groups keeps the Spark plan manageable.</div>
+  <p class="note">Confirmed: these five rule groups are the ones applied. The other groups in the file (<code>fixed_income_sector</code>, <code>Annual_report_Asset_type</code>, <code>RGLA_sub_portfolio</code>) are not applied in this program.</p>
+</section>
+
+<section id="t-al09">
+  <h2>A&amp;L 09: initial shocks</h2>
+  <p>Program <code>09_Apply_Initial_Shocks</code> reads the shock rules Excel and applies it to the table from A&amp;L 08. It is a PySpark port of the SAS macro <code>%Apply_Initial_Shocks</code>: the same skeleton as <code>%Apply_Business_Rules</code>, with an extra <code>SHOCK_TYPE</code> dimension on <code>IF_THEN</code> rules.</p>
+
+  <h3 style="margin-top:28px">Shock rule columns</h3>
+  <p class="prose">All business rule columns (<code>RULE_ID</code>, <code>RULE_GROUP</code>, <code>RULE_TYPE</code>, <code>RULE_DATA_SELECTION</code>, <code>RULE_TO_APPLY</code>, <code>RULE_RETURN</code>), plus:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">SHOCK_TYPE</td><td><code>NONE</code>, <code>REPLACE_CHAR</code>, <code>REPLACE_NUM</code>, <code>ADD</code> or <code>MULT</code>. Only read for <code>IF_THEN</code>; blank is treated as <code>NONE</code></td></tr>
+      <tr><td class="mono">RULE_VARIABLE</td><td>Target column to shock</td></tr>
+      <tr><td class="mono">SHOCK_VARIABLE_CHAR</td><td>Text value, stored SAS-style with quotes (e.g. <code>"AA"</code>)</td></tr>
+      <tr><td class="mono">SHOCK_VARIABLE_NUM</td><td>Numeric shock value</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">Expression built per SHOCK_TYPE</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>SHOCK_TYPE</th><th>Assignment</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">NONE</td><td>Literal assignments from <code>RULE_TO_APPLY</code></td></tr>
+      <tr><td class="mono">REPLACE_CHAR</td><td class="mono">var = SHOCK_VARIABLE_CHAR</td></tr>
+      <tr><td class="mono">REPLACE_NUM</td><td class="mono">var = SHOCK_VARIABLE_NUM</td></tr>
+      <tr><td class="mono">ADD</td><td class="mono">var = var + SHOCK_VARIABLE_NUM</td></tr>
+      <tr><td class="mono">MULT</td><td class="mono">var = (1 + SHOCK_VARIABLE_NUM) * var</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px"><code>DELETE</code> uses the same exception-capture-then-remove pattern as the business rules, storing removed rows as temp view <code>CTX_EXC_&lt;RULE_ID&gt;</code>. <code>IF_THEN_ELSE</code> ignores <code>SHOCK_TYPE</code>, as in the SAS source.</p>
+
+  <h3 style="margin-top:28px">Shared code</h3>
+  <div class="cols2">
+    <div class="panel"><h3><code>sas_rules_common.py</code></h3><p>The SAS to Spark SQL translator (<code>translate_sas_expression</code>, <code>parse_assignments</code>), shared by A&amp;L 08 and A&amp;L 09 so a fix applies to both.</p></div>
+    <div class="panel"><h3><code>apply_initial_shocks.py</code></h3><p>Builds the assignment per rule and applies it with <code>F.expr()</code>. An unknown <code>SHOCK_TYPE</code> raises a <code>ValueError</code> naming the <code>RULE_ID</code>, instead of being skipped silently.</p></div>
+  </div>
+  <h3 style="margin-top:28px">Rule groups, applied in sequence</h3>
+  <p class="prose">The shock rule groups follow the three rule types.</p>
+<pre>shock_groups = [
+    <span class="k">"rule_if_then"</span>,
+    <span class="k">"rule_if_then_else"</span>,
+    <span class="k">"rule_delete"</span>,
+]
+<span class="k">for</span> group <span class="k">in</span> shock_groups:
+    df = apply_initial_shocks(spark, in_impacted_df=df,
+                              in_rule_df=shock_rules_df,
+                              in_rule_group=group)</pre>
+  <p class="note">Based on the conversion work from July 2026, with the rule groups confirmed for the current program.</p>
+</section>
+
+<section id="t-ao01">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Assets 01: import references</h2>
+  <p>Reads the same reference files as A&amp;L 01 (<code>business_rules</code> and <code>Mapping_tables</code>: MAPPING_CIC, rating, Country) and additionally reads three tables.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Table</th><th>Columns</th><th>Content</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">portfolio</td><td class="mono">AFFECTATION<br>PORTFOLIO</td><td>Maps each affectation (about 55 rows) to <code>LIFE</code>, <code>NON-LIFE</code> or <code>GENERAL</code></td></tr>
+      <tr><td class="mono">fund_table</td><td class="mono">AFFECTATION<br>FUND_CODE</td><td>Fund codes for separately managed funds, e.g. BELINS SEF PENSION CANDRIAM → 56, Belins VVSG LIFE GROUP → 54</td></tr>
+      <tr><td class="mono">default_probability</td><td class="mono">RATING, MATURITY<br>DEFAULT_PROB<br>DEFAULT_PROB_MIN<br>DEFAULT_PROB_MAX</td><td>Default probability per rating and maturity (years), with a min/max range</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">fund_table</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>AFFECTATION</th><th>FUND_CODE</th></tr></thead>
+    <tbody>
+      <tr><td>BELINS SEF PENSION CANDRIAM</td><td class="mono">56</td></tr>
+      <tr><td>BELINS SEF PENSION NAG</td><td class="mono">56</td></tr>
+      <tr><td>BELINS SEF SOLIDARITY CANDRIAM</td><td class="mono">57</td></tr>
+      <tr><td>Belins PROV LIMBURG LIFE GROUP</td><td class="mono">53</td></tr>
+      <tr><td>Belins VVSG LIFE GROUP</td><td class="mono">54</td></tr>
+      <tr><td>Belins MULTI EMPLOYERS FUND</td><td class="mono">55</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">default_probability (AAA sample)</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>MATURITY</th><th>DEFAULT_PROB</th><th>DEFAULT_PROB_MIN</th><th>DEFAULT_PROB_MAX</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">0</td><td class="mono">0.0000005</td><td class="mono">0</td><td class="mono">0.0000031</td></tr>
+      <tr><td class="mono">1</td><td class="mono">0.0000005</td><td class="mono">0</td><td class="mono">0.0000031</td></tr>
+      <tr><td class="mono">5</td><td class="mono">0.000029</td><td class="mono">0</td><td class="mono">0.0001695</td></tr>
+      <tr><td class="mono">10</td><td class="mono">0.0001</td><td class="mono">0</td><td class="mono">0.00055</td></tr>
+      <tr><td class="mono">20</td><td class="mono">0.000377115</td><td class="mono">0</td><td class="mono">0.002662271</td></tr>
+      <tr><td class="mono">30+</td><td class="mono">0.000753506</td><td class="mono">0</td><td class="mono">0.006057845</td></tr>
+    </tbody>
+  </table></div>
+  <div class="warn"><b>Points to check:</b> the probability rises with maturity, which suggests a cumulative default probability. From maturity 30 the values are flat, so the join must handle maturities above the last row, either by capping maturity or by keeping rows up to the highest value. Maturity is an integer, so fractional remaining lifetimes need a rounding rule. The Excel shows decimal commas, so check the values are read as numbers, not text.</div>
+</section>
+
+<section id="t-ao02">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Assets 02: limit monitoring input</h2>
+  <p>Program <code>B_ASSETS_02_Import_limit_monitoring_input</code> reads the sheets of <code>Limit_Monitoring_Mapping_Tables</code> with <code>dataframe_from_path()</code> and registers each as a temp view, then reads three separate files.</p>
+
+  <h3 style="margin-top:28px">Limit_Monitoring_Mapping_Tables</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Sheet</th><th>View</th><th>Columns</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">CNTRY_LIMITS</td><td class="mono">Country_Limits</td><td class="mono">COUNTRY_NAME, LIMITS_CNTR, REPORTING_DATE</td></tr>
+      <tr><td class="mono">SOVEREIGN_LIMITS</td><td class="mono">Sovereign_Limits</td><td class="mono">SOVEREIGN, LIMITS_SVRG, REPORTING_DATE</td></tr>
+      <tr><td class="mono">RATING_ISSUER_LIMITS</td><td class="mono">Rating_Issuer_Limits</td><td class="mono">RATING_ULTIMATE_PARENT_RISK, LIMITS_ISSUER, REPORTING_DATE</td></tr>
+      <tr><td class="mono">SECTOR_DIVERSIFICATION</td><td class="mono">Sector_Diversification</td><td class="mono">SECTOR, LIMITS_FI, LIMITS_EQY, LIMITS_GLOBAL, REPORTING_DATE</td></tr>
+      <tr><td class="mono">VAR</td><td class="mono">VAR_TOT</td><td class="mono">ENTITY, DATE, VAR</td></tr>
+      <tr><td class="mono">FUNDS_LIMITS</td><td class="mono">FUNDS_LIMITS</td><td class="mono">ISIN, ULTIMATE_PARENT_RISK, QUANTITY_VALIDATED, COMMENT</td></tr>
+      <tr><td class="mono">ULTIMATE_PARENT_LIMITS</td><td class="mono">ULTIMATE_PARENT_LIMITS</td><td class="mono">ISIN, ULTIMATE_PARENT_RISK, ISSUER, QUANTITY_VALIDATED, COMMENT</td></tr>
+      <tr><td class="mono">OTHER_BONDS_LIMITS</td><td class="mono">OTHER_BONDS_LIMITS</td><td class="mono">ISIN, ULTIMATE_PARENT_RISK, ISSUER, QUANTITY_VALIDATED, COMMENT</td></tr>
+    </tbody>
+  </table></div>
+<pre>Country_Limits = dataframe_from_path(spark, <span class="k">"Limit_Monitoring_Mapping_Tables"</span>, …)
+<span class="c"># … one per sheet</span>
+Country_Limits.createOrReplaceTempView(<span class="k">"Country_Limits"</span>)
+VAR_TOT.createOrReplaceTempView(<span class="k">"VAR_TOT"</span>)</pre>
+
+  <h3 style="margin-top:28px">Separate files</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>File</th><th>Columns</th><th>Content</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">beta</td><td class="mono">ISIN, BETA</td><td>Equity beta per share, e.g. 1.0441</td></tr>
+      <tr><td class="mono">warf</td><td class="mono">Assets_Code, Warf, RTGFactor, ULTIMATE_PARENT_RISK, RATING_WATERFALL, Time_to_maturity</td><td>Rating factor per fund (money market, bond and private debt funds), e.g. A → 132, B → 2720</td></tr>
+      <tr><td class="mono">warf_mortgages</td><td class="mono">Source, Duration, WARF</td><td>DWK and Elantis: duration 14.50, WARF 69</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="warn"><b>Points to check:</b>
+    <ul style="margin:6px 0 0;padding-left:18px">
+      <li><b>Dated rows.</b> Limit sheets hold several rows per key (e.g. FRANCE 2019 and 2022, Real Estate 2019 and 2023, AA 2019 and 2022). Joins must pick the latest <code>REPORTING_DATE</code> on or before the run date, or positions get duplicated.</li>
+      <li><b>"-" cells.</b> Excel shows <code>-</code> for zero or empty. BELGIUM sovereign and BB+ issuer show <code>-</code>, which could mean "no limit" or "limit of zero". Confirm how the program reads them.</li>
+      <li><b>Name changes.</b> CNTRY_LIMITS has both CZECH REPUBLIC (2019) and CZECHIA (2021). Name-based joins with the Country table must use the same spelling.</li>
+      <li><b>Column header.</b> In ULTIMATE_PARENT_LIMITS the header may read <code>QUANTITY_VALIDATEDCOMMENT</code> rather than <code>QUANTITY_VALIDATED</code>. Check it matches the name the code uses.</li>
+      <li><b>Identifiers and numbers.</b> Some ISIN values are all digits (e.g. 9095201008545), so read ISIN as text. The files use decimal commas, so check numbers are not read as text.</li>
+      <li><b>WARF factors.</b> BBB appears with both 325 and 385, and NR uses 2720 (same as B). Worth confirming this is intended.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="t-ao03">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Assets 03: import BGAAP</h2>
+  <p>Program <code>03_import_BGAAP</code> left joins the asset table with three Belgian GAAP sources, so every asset row is kept.</p>
+  <div class="chain">
+    <div class="node"><b>Asset table</b><small>base, all rows kept</small><span class="v">assets</span></div>
+    <span class="arrow" aria-hidden="true">⟕</span>
+    <div class="node"><b>BS_Interfinance</b><small>BGAAP balance sheet</small><span class="v">left join</span></div>
+    <span class="arrow" aria-hidden="true">⟕</span>
+    <div class="node"><b>BS_Capline</b><small>BGAAP balance sheet</small><span class="v">left join</span></div>
+    <span class="arrow" aria-hidden="true">⟕</span>
+    <div class="node"><b>Annex_21</b><small>from 04_Extract_Data_AssetDB_BGAAP</small><span class="v">left join</span></div>
+  </div>
+  <h3 style="margin-top:28px">BS_Interfinance and BS_Capline</h3>
+  <p class="prose">Balance sheets of entities booked in Winbooks. The workbook flows <code>Winbooks_Data</code> → <code>Formatted_Data</code> → <code>SolvencyScope_Details</code> / <code>SolvencyScope_Summary</code> → <code>Assets_DB</code> → summary sheet (cells reference <code>Assets_DB</code>, e.g. <code>=Assets_DB!B6</code>).</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Column</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Buy_Transaction_Code</td><td class="mono">INTERFINANCE190000001, A891800000013, AUXIPAR2000000080</td></tr>
+      <tr><td class="mono">ISIN_agr</td><td class="mono">BE0003822393</td></tr>
+      <tr><td class="mono">Assets_agr</td><td>ELIA GROUP SA/NV, RETAIL ESTATES SICAFI_2</td></tr>
+      <tr><td class="mono">Market_Value_Model</td><td class="mono">32157309.6</td></tr>
+      <tr><td class="mono">Accounting_Value_IFRS</td><td class="mono">17452898.8</td></tr>
+      <tr><td class="mono">Accrued</td><td class="mono">12923.28</td></tr>
+      <tr><td class="mono">Accounting_Value_IFRS_Accrued_Incl</td><td>IFRS value plus accrued interest</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 style="margin-top:28px">Annex_21</h3>
+  <p class="prose">Extract covering all companies (file suffix <code>all_cies_&lt;date&gt;</code>), one row per purchase.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Column</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Business</td><td>BELINS, ELANTIS, BELINSFINANC</td></tr>
+      <tr><td class="mono">Buy Account</td><td>Purchase identifier</td></tr>
+      <tr><td class="mono">Affectation</td><td>BELINS INVL, Belins NBB 21 Bis FVTPL, LFIN_741709</td></tr>
+      <tr><td class="mono">Asset</td><td>ITALY 24/39 01-10 4.15%</td></tr>
+      <tr><td class="mono">Instrument Type</td><td>Bonds, Funds</td></tr>
+      <tr><td>Further columns</td><td>Entry identifier, accounting values, dates</td></tr>
+    </tbody>
+  </table></div>
+  <div class="warn"><b>Points to check:</b>
+    <ul style="margin:6px 0 0;padding-left:18px">
+      <li><b>ISIN is not unique.</b> One placeholder ISIN (<code>FFTBEEUR0076</code>) is shared by many unlisted holdings (EPC, VEH, SOCOFE, SPGE, Goed Immo …), and listed shares appear in several lots (RETAIL ESTATES SICAFI and SICAFI_2). Joining on ISIN would multiply rows; the purchase code is the safer key.</li>
+      <li><b>Row counts.</b> Count rows before and after the three left joins to catch any duplication.</li>
+    </ul>
+  </div>
+  <div class="warn"><b>Point to check:</b> with three left joins, any source that holds more than one row per join key will duplicate asset rows and inflate totals. A row count before and after the joins is a cheap safeguard.</div>
+</section>
+
+<section id="t-ao-rest">
+  <p class="eyebrow">Assets only mode</p>
+  <h2>Assets: remaining programs</h2>
+  <p>After the three mode-specific programs, the flow reuses the assets and liabilities logic, with one extra program before the business rules.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Order</th><th>Step</th><th>Logic</th></tr></thead>
+    <tbody>
+      <tr><td>4</td><td>Table enrichment</td><td><a href="#t-al02">As A&amp;L 02</a></td></tr>
+      <tr><td>5</td><td>Segment repartition</td><td><a href="#t-al03">As A&amp;L 03</a></td></tr>
+      <tr><td>6</td><td>Waterfall rating</td><td><a href="#t-al04">As A&amp;L 04</a></td></tr>
+      <tr><td>7</td><td>Country info</td><td><a href="#t-al05">As A&amp;L 05</a></td></tr>
+      <tr><td>8</td><td>Fixed income</td><td><a href="#t-al06">As A&amp;L 06</a></td></tr>
+      <tr><td>9</td><td>Liquidity</td><td><a href="#t-al07">As A&amp;L 07</a></td></tr>
+      <tr><td>10</td><td><b>Portfolio and fund code</b></td><td>New: joins <code>portfolio</code> and <code>fund_table</code> (from Assets 01) on <code>AFFECTATION</code>, adding <code>PORTFOLIO</code> and <code>FUND_CODE</code></td></tr>
+      <tr><td>11</td><td>Apply business rules</td><td><a href="#t-al08">As A&amp;L 08</a></td></tr>
+      <tr><td>12</td><td>Apply initial shocks</td><td><a href="#t-al09">As A&amp;L 09</a></td></tr>
+      <tr><td>13</td><td><b>Limit monitoring report</b></td><td>New: compares exposures with the limit views from Assets 02 (<code>Country_Limits</code>, <code>Sovereign_Limits</code>, <code>Rating_Issuer_Limits</code>, <code>Sector_Diversification</code>, <code>VAR_TOT</code>, the approved exceptions) and produces the report. Logic to be documented.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="warn"><b>Points to check for step 10:</b> <code>fund_table</code> only lists the separately managed funds, so it must be a left join, with <code>FUND_CODE</code> empty for other affectations. Affectation names mix upper and lower case ("BELINS SEF PENSION CANDRIAM", "Belins NON LIFE"), so a trimmed, case-insensitive match is safer than an exact one.</div>
+</section>
+
+<section id="t-extract">
+  <h2>Extract Data programs</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Program</th><th>Source and filters</th><th>Output</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">01_extract_data_assetdb</td><td>Full extract of the asset database table</td><td>Asset list for later steps</td></tr>
+      <tr><td class="mono">02_List_Quoted_Equities</td><td>Asset database, filtered on S.02.01 rows R0090, R0110, R0120</td><td>Equities by box</td></tr>
+      <tr><td class="mono">04_Extract_Data_AssetDB_BGAAP</td><td>Query 1: ledger Local GAAP, source GPMS, instrument types bonds, convertible bonds, funds, rights, shares<br>Query 2: ledger IFRS9, source GPMS, same instrument types</td><td>Dataframe <code>BGAAP Annex21</code> + IFRS 9 dataframe, written to an Excel file</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="t-mapping">
+  <h2>Classification rules</h2>
+  <p>Each asset in the detailed list (S.06.02) rolls up into a balance sheet line (S.02.01) based on its CIC code and participation flag. CIC characters 1–2 show the listing country (<code>XL</code> = not listed), characters 3–4 the asset type.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Instrument</th><th>CIC (chars 3–4)</th><th>S.02.01 row</th><th>Typical IFRS level</th></tr></thead>
+    <tbody>
+      <tr><td>Government bond</td><td class="mono">1x</td><td class="mono">R0140</td><td>1</td></tr>
+      <tr><td>Corporate bond</td><td class="mono">21, 23–29</td><td class="mono">R0150</td><td>1 or 2</td></tr>
+      <tr><td>Convertible bond</td><td class="mono">22</td><td class="mono">R0150</td><td>2</td></tr>
+      <tr><td>Fund</td><td class="mono">4x</td><td class="mono">R0180</td><td>1 or 2 (3 for private equity)</td></tr>
+      <tr><td>Rights</td><td class="mono">33</td><td class="mono">R0110 / R0120</td><td>1 if listed</td></tr>
+      <tr><td>Shares</td><td class="mono">31, 34</td><td class="mono">R0110 / R0120 / R0090</td><td>1 listed, 3 unlisted</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="k">if</span> participation:
+    row = <span class="k">"R0090"</span>          <span class="c"># holdings in related undertakings</span>
+<span class="k">elif</span> cic[2] == <span class="k">"3"</span>:       <span class="c"># category 3 = equity</span>
+    row = <span class="k">"R0120"</span> <span class="k">if</span> cic[:2] <span class="k">in</span> (<span class="k">"XL"</span>, <span class="k">"XT"</span>) <span class="k">else</span> <span class="k">"R0110"</span></pre>
+  <p class="note">R0100 (Equities) is the subtotal of R0110 + R0120, so it is excluded from filters to avoid double counting. Values are in column C0010 (Solvency II value).</p>
+</section>
+
+<section id="t-checks">
+  <h2>Validation checks</h2>
+  <p>Rules that can be automated to catch misclassified assets:</p>
+  <div class="cols2">
+    <div class="panel"><h3>Listing vs price level</h3><ul><li>R0110 assets flagged IFRS Level 3: investigate.</li><li>R0120 assets flagged Level 1: CIC listing code is probably wrong.</li></ul></div>
+    <div class="panel"><h3>Reconciliation</h3><ul><li>Sum of S.06.02 per row equals the S.02.01 total.</li><li>Gaps between BGAAP, IFRS 9 and Solvency II values are explained per instrument.</li></ul></div>
+  </div>
+  <p class="crosslink">Need the plain-language version? <button type="button" data-go="business">Open the business explanation.</button></p>
+</section>
+</main>
+</div></div>
+
+<footer class="ver gut" id="page-version" data-version="2" data-saved="2026-11-03T13:54"><div class="inner">
+  <p class="ver-now">Version <span id="ver-num">2</span> · saved <span id="ver-date">3 November 2026, 13:54</span></p>
+  <details class="ver-log"><summary>Version history</summary>
+    <ol id="ver-log" reversed=""><li><b>Version 2</b> · 3 November 2026, 13:54 · added Calculation Engine</li>
+      <li><b>Version 1</b> · 2 November 2026, 09:28 · First version with the Edit button</li>
+    </ol>
+  </details>
+</div></footer>
+
+<script data-page="tabs">
+(function(){
+  var tabs={business:document.getElementById('tab-business'),technical:document.getElementById('tab-technical')};
+  var panels={business:document.getElementById('business'),technical:document.getElementById('technical')};
+  var sectionTab=function(id){var el=document.getElementById(id);if(!el)return null;var p=el.closest('[role="tabpanel"]');return p?p.id:null;};
+  function show(name,focus){
+    Object.keys(tabs).forEach(function(k){
+      var on=k===name;
+      tabs[k].setAttribute('aria-selected',on?'true':'false');
+      tabs[k].tabIndex=on?0:-1;
+      panels[k].hidden=!on;
+    });
+    if(focus)tabs[name].focus();
+  }
+  function route(){
+    var h=(location.hash||'').slice(1);
+    if(h==='business'||h==='technical'){show(h);window.scrollTo(0,0);return;}
+    var t=h?sectionTab(h):null;
+    if(t){show(t);var el=document.getElementById(h);if(el)el.scrollIntoView();}
+    else show('business');
+  }
+  Object.keys(tabs).forEach(function(k){
+    tabs[k].addEventListener('click',function(){
+      if(location.hash!=='#'+k){location.hash=k;}else{show(k);}
+    });
+    tabs[k].addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+        var n=k==='business'?'technical':'business';
+        location.hash=n; show(n,true); e.preventDefault();
+      }
+    });
+  });
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-go]');
+    if(b&&!document.documentElement.classList.contains('editing'))location.hash=b.getAttribute('data-go');
+  });
+  window.addEventListener('hashchange',route);
+  window.__showTab=show;
+  route();
+
+  document.addEventListener('input',function(e){
+    if(!e.target||e.target.id!=='gq')return;
+    var t=e.target.value.trim().toLowerCase(),n=0;
+    var dl=document.getElementById('gl'),empty=document.getElementById('ge');
+    [].slice.call(dl.querySelectorAll('dt')).forEach(function(dt){
+      var dd=dt.nextElementSibling;
+      var hit=!t||(dt.textContent+' '+(dd?dd.textContent:'')).toLowerCase().indexOf(t)>-1;
+      dt.hidden=!hit;if(dd)dd.hidden=!hit;if(hit)n++;
+    });
+    empty.hidden=n>0;
+  });
+})();
+</script>
+
+<style data-page="editor">
+.ed-bar{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);font-size:14px}
+.ed-bar button{appearance:none;font:inherit;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:7px 12px;cursor:pointer;white-space:nowrap}
+.ed-bar button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.ed-bar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ed-bar button:disabled{opacity:.45;cursor:not-allowed}
+.ed-bar button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.ed-bar button.primary:hover{color:var(--surface);opacity:.9}
+.ed-bar button.danger{color:var(--amber);border-color:var(--amber)}
+.ver{border-top:1px solid var(--line);padding-block:20px 96px;color:var(--muted);font-size:13px}
+.ver p{margin:0}
+.ver-log{margin-top:8px}
+.ver-log summary{cursor:pointer;color:var(--accent)}
+.ver-log ol{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
+.ver-log b{color:var(--ink);font-weight:600}
+.ver-note{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+.ver-note input{flex:1 1 220px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.ver-note input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ver-note label{font-size:12px;color:var(--muted);width:100%}
+.ed-bar .ed-status{align-self:center;color:var(--muted);font-size:12px;padding:0 6px}
+.ed-bar .ed-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:6px;vertical-align:middle}
+.ed-help{background:var(--amber-soft);color:var(--ink);border-bottom:1px solid var(--line);font-size:14px;padding-block:8px}
+.ed-help b{color:var(--amber)}
+.ed-draft{background:var(--accent-soft);border-bottom:1px solid var(--line);padding-block:10px;font-size:14px}
+.ed-draft .inner{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ed-draft button{appearance:none;font:inherit;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:6px;padding:5px 10px;cursor:pointer}
+.ed-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:21;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.2)}
+.editing [contenteditable="true"]{outline:none}
+.editing [contenteditable="true"] :is(h1,h2,h3,p,li,td,th,dt,dd,pre,.example,.oneliner,.warn,.note,.panel,.node,.box):hover{box-shadow:inset 0 0 0 1px var(--accent);border-radius:3px}
+.editing [contenteditable="true"] :focus{outline:none}
+.editing section.ed-current{background:var(--accent-soft);border-radius:8px;box-shadow:0 0 0 8px var(--accent-soft)}
+.editing nav.index a{cursor:text}
+@media print{.ed-bar,.ed-help,.ed-draft,.ed-toast{display:none!important}}
+</style>
+
+<script data-page="editor">
+(function(){
+  var root=document.documentElement;
+  var DRAFT_KEY='riskEngineGuide.draft.v1';
+  var dirty=false, editing=false, currentSection=null, currentRow=null, confirmTimer=null;
+
+  function regions(){
+    return [].slice.call(document.querySelectorAll('header.top .inner, #business .panelwrap main, #technical .panelwrap main, #business nav.index ol, #technical nav.index ol'));
+  }
+  function activePanel(){ return document.querySelector('[role="tabpanel"]:not([hidden])'); }
+
+  /* ---------- toolbar ---------- */
+  var bar=document.createElement('div');
+  bar.className='ed-bar'; bar.setAttribute('role','toolbar'); bar.setAttribute('aria-label','Page editing');
+  bar.setAttribute('data-editor-ui','');
+  document.body.appendChild(bar);
+
+  var help=document.createElement('div');
+  help.className='ed-help gut'; help.hidden=true; help.setAttribute('data-editor-ui','');
+  help.innerHTML='<div class="inner"><b>Editing.</b> Click any text and type. Ctrl+B for bold, Ctrl+Z to undo. Click inside a table to add or remove rows. When finished, click <b>Save new version</b>: it downloads a numbered copy and records it in the version history at the bottom.</div>';
+  var tabbar=document.querySelector('.tabbar');
+  tabbar.parentNode.insertBefore(help,tabbar.nextSibling);
+
+  function btn(label,cls,fn,title){
+    var b=document.createElement('button'); b.type='button'; b.textContent=label;
+    if(cls)b.className=cls; if(title)b.title=title;
+    b.addEventListener('mousedown',function(e){e.preventDefault();}); // keep caret where it is
+    b.addEventListener('click',fn); return b;
+  }
+  var status=document.createElement('span'); status.className='ed-status';
+  var bEdit=btn('Edit page','primary',startEdit,'Turn on editing');
+  var bSection=btn('Add section','',addSection,'Add a new section after the highlighted one');
+  var bRemoveSection=btn('Remove section','danger',removeSection,'Remove the highlighted section');
+  var bRow=btn('Add row','',addRow,'Add a row below the one you clicked');
+  var bRemoveRow=btn('Remove row','danger',removeRow,'Remove the row you clicked');
+  var bTerm=btn('Add glossary term','',addTerm,'Add a term to the glossary');
+  var bSave=btn('Save new version','primary',saveCopy,'Download the updated page as a new numbered version');
+  var bDone=btn('Done','',stopEdit,'Stop editing');
+
+  function render(){
+    bar.innerHTML='';
+    status.innerHTML=dirty?'<span class="ed-dot"></span>Unsaved changes':'';
+    if(askingNote){
+      bar.appendChild(noteBox);
+    }else if(!editing){
+      if(dirty){bar.appendChild(status);bar.appendChild(bSave);}
+      bar.appendChild(bEdit);
+    }else{
+      [status,bSection,bRemoveSection,bRow,bRemoveRow,bTerm,bSave,bDone].forEach(function(b){bar.appendChild(b);});
+      bRemoveSection.disabled=!currentSection;
+      bRow.disabled=!currentRow;
+      bRemoveRow.disabled=!currentRow||currentRow.parentNode.rows.length<2;
+    }
+    resetConfirm();
+  }
+
+  function resetConfirm(){
+    clearTimeout(confirmTimer);
+    bRemoveSection.textContent='Remove section'; bRemoveSection.dataset.armed='';
+  }
+
+  function toast(msg){
+    var t=document.createElement('div'); t.className='ed-toast'; t.setAttribute('role','status');
+    t.setAttribute('data-editor-ui',''); t.textContent=msg; document.body.appendChild(t);
+    setTimeout(function(){t.remove();},5000);
+  }
+
+  /* ---------- edit mode ---------- */
+  function startEdit(){
+    editing=true; root.classList.add('editing'); help.hidden=false;
+    regions().forEach(function(r){r.setAttribute('contenteditable','true');r.setAttribute('spellcheck','true');});
+    var gq=document.getElementById('gq'); if(gq){gq.value='';gq.dispatchEvent(new Event('input',{bubbles:true}));}
+    render();
+  }
+  function stopEdit(){
+    editing=false; root.classList.remove('editing'); help.hidden=true;
+    regions().forEach(function(r){r.removeAttribute('contenteditable');r.removeAttribute('spellcheck');});
+    setCurrent(null,null); render();
+  }
+
+  function setCurrent(sec,row){
+    if(currentSection&&currentSection!==sec)currentSection.classList.remove('ed-current');
+    currentSection=sec; currentRow=row;
+    if(sec)sec.classList.add('ed-current');
+    if(editing)render();
+  }
+  function trackCaret(){
+    if(!editing)return;
+    var s=window.getSelection(); if(!s||!s.rangeCount)return;
+    var n=s.anchorNode; if(n&&n.nodeType===3)n=n.parentNode;
+    if(!n||!n.closest)return;
+    if(!n.closest('[contenteditable="true"]'))return;
+    var sec=n.closest('main section'); var tr=n.closest('tbody tr');
+    setCurrent(sec,tr);
+  }
+  document.addEventListener('selectionchange',trackCaret);
+
+  /* links inside editable areas should not navigate while editing */
+  document.addEventListener('click',function(e){
+    if(!editing)return;
+    var a=e.target.closest&&e.target.closest('[contenteditable="true"] a');
+    if(a){e.preventDefault();}
+  },true);
+
+  /* paste as plain text, so Word/Excel formatting does not break the page */
+  document.addEventListener('paste',function(e){
+    if(!editing||!e.target.closest||!e.target.closest('[contenteditable="true"]'))return;
+    var text=(e.clipboardData||window.clipboardData).getData('text/plain');
+    if(text==null)return;
+    e.preventDefault();
+    if(!document.execCommand('insertText',false,text)){
+      var s=window.getSelection(); if(!s.rangeCount)return;
+      var r=s.getRangeAt(0); r.deleteContents(); r.insertNode(document.createTextNode(text)); r.collapse(false);
+    }
+  });
+
+  /* keep the contents list in sync with headings of sections added here */
+  document.addEventListener('input',function(e){
+    if(!editing||!e.target.closest||e.target.id==='gq')return;
+    if(e.target.closest('[contenteditable="true"]')){markDirty();}
+    var sec=currentSection; if(!sec)return;
+    var link=document.querySelector('nav.index a[data-sync][href="#'+sec.id+'"]');
+    var h=sec.querySelector('h2'); if(link&&h)link.textContent=h.textContent.trim()||'Untitled section';
+  });
+
+  function markDirty(){
+    if(!dirty){dirty=true;render();}
+    clearTimeout(markDirty.t); markDirty.t=setTimeout(saveDraft,800);
+  }
+
+  /* ---------- actions ---------- */
+  function addSection(){
+    var panel=activePanel(); var main=panel.querySelector('main'); var nav=panel.querySelector('nav.index ol');
+    var id='s-'+Date.now().toString(36);
+    var sec=document.createElement('section'); sec.id=id;
+    sec.innerHTML='<h2>New section</h2><p>Write the explanation here.</p>';
+    var after=currentSection&&main.contains(currentSection)?currentSection:null;
+    var glossary=main.querySelector('#b-glossary');
+    if(after&&after.id!=='b-glossary'){after.after(sec);} else if(glossary){main.insertBefore(sec,glossary);} else {main.appendChild(sec);}
+    var li=document.createElement('li'); li.innerHTML='<a href="#'+id+'" data-sync="1">New section</a>';
+    var afterLink=after?nav.querySelector('a[href="#'+after.id+'"]'):null;
+    var glossLink=nav.querySelector('a[href="#b-glossary"]');
+    if(afterLink&&after.id!=='b-glossary'){afterLink.parentNode.after(li);} else if(glossLink){nav.insertBefore(li,glossLink.parentNode);} else {nav.appendChild(li);}
+    sec.scrollIntoView({block:'center'});
+    selectContents(sec.querySelector('h2')); setCurrent(sec,null); markDirty();
+    toast('Section added. Type its heading, then its text.');
+  }
+
+  function removeSection(){
+    if(!currentSection)return;
+    if(bRemoveSection.dataset.armed!=='1'){
+      bRemoveSection.dataset.armed='1'; bRemoveSection.textContent='Click again to remove';
+      clearTimeout(confirmTimer); confirmTimer=setTimeout(resetConfirm,4000); return;
+    }
+    var sec=currentSection; var link=document.querySelector('nav.index a[href="#'+sec.id+'"]');
+    if(link)link.parentNode.remove();
+    sec.remove(); setCurrent(null,null); markDirty(); toast('Section removed. Ctrl+Z will not bring it back; close without saving to undo.');
+  }
+
+  function addRow(){
+    if(!currentRow)return;
+    var copy=currentRow.cloneNode(true);
+    [].slice.call(copy.cells).forEach(function(c){c.textContent='';});
+    copy.cells[0].textContent='New';
+    currentRow.after(copy); selectContents(copy.cells[0]); markDirty();
+  }
+  function removeRow(){
+    if(!currentRow||currentRow.parentNode.rows.length<2)return;
+    var next=currentRow.nextElementSibling||currentRow.previousElementSibling;
+    currentRow.remove(); currentRow=null;
+    if(next&&next.cells[0])selectContents(next.cells[0]);
+    markDirty(); render();
+  }
+
+  function addTerm(){
+    window.__showTab&&window.__showTab('business');
+    var dl=document.getElementById('gl');
+    var dt=document.createElement('dt'); dt.textContent='New term';
+    var dd=document.createElement('dd'); dd.textContent='What it means, in plain words.';
+    dl.appendChild(dt); dl.appendChild(dd);
+    dt.scrollIntoView({block:'center'}); selectContents(dt); markDirty();
+  }
+
+  function selectContents(el){
+    if(!el)return;
+    var r=document.createRange(); r.selectNodeContents(el);
+    var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    var host=el.closest('[contenteditable="true"]'); if(host)host.focus({preventScroll:true});
+  }
+
+  /* ---------- save a copy of the whole page ---------- */
+  function buildHtml(hook){
+    var clone=root.cloneNode(true);
+    if(hook)hook(clone);
+    clone.classList.remove('editing'); if(!clone.className)clone.removeAttribute('class');
+    clone.removeAttribute('data-theme');
+    [].slice.call(clone.querySelectorAll('[data-editor-ui]')).forEach(function(n){n.remove();});
+    [].slice.call(clone.querySelectorAll('[contenteditable]')).forEach(function(n){n.removeAttribute('contenteditable');n.removeAttribute('spellcheck');});
+    [].slice.call(clone.querySelectorAll('.ed-current')).forEach(function(n){n.classList.remove('ed-current');if(!n.className)n.removeAttribute('class');});
+    /* drop anything a viewer injected; keep only this page's own scripts */
+    [].slice.call(clone.querySelectorAll('script')).forEach(function(s){
+      var own=s.hasAttribute('data-page')||/__showTab|tab-business/.test(s.textContent);
+      if(!own)s.remove();
+    });
+    [].slice.call(clone.querySelectorAll('meta[http-equiv]')).forEach(function(m){m.remove();});
+    /* reset view state: business tab open, glossary search cleared */
+    var tb=clone.querySelector('#tab-business'),tt=clone.querySelector('#tab-technical');
+    if(tb){tb.setAttribute('aria-selected','true');tb.removeAttribute('tabindex');}
+    if(tt){tt.setAttribute('aria-selected','false');tt.setAttribute('tabindex','-1');}
+    var pb=clone.querySelector('#business'),pt=clone.querySelector('#technical');
+    if(pb)pb.removeAttribute('hidden'); if(pt)pt.setAttribute('hidden','');
+    [].slice.call(clone.querySelectorAll('#gl dt,#gl dd')).forEach(function(n){n.removeAttribute('hidden');});
+    var ge=clone.querySelector('#ge'); if(ge)ge.setAttribute('hidden','');
+    var gq=clone.querySelector('#gq'); if(gq)gq.removeAttribute('value');
+    return '<!doctype html>\n'+clone.outerHTML;
+  }
+
+  /* ---------- versions ---------- */
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function pad(n){return (n<10?'0':'')+n;}
+  function niceDate(d){return d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear()+', '+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function isoLocal(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+  function stampVersion(scope,n,d,note){
+    var f=scope.querySelector('#page-version'); if(!f)return;
+    f.setAttribute('data-version',String(n)); f.setAttribute('data-saved',isoLocal(d));
+    scope.querySelector('#ver-num').textContent=String(n);
+    scope.querySelector('#ver-date').textContent=niceDate(d);
+    var li=(scope.ownerDocument||scope).createElement('li');
+    li.innerHTML='<b>Version '+n+'</b> &middot; '+esc(niceDate(d))+(note?' &middot; '+esc(note):'');
+    var log=scope.querySelector('#ver-log'); log.insertBefore(li,log.firstChild);
+  }
+  function currentVersion(){
+    var f=document.getElementById('page-version');
+    return f?parseInt(f.getAttribute('data-version'),10)||1:1;
+  }
+
+  /* the save button first asks for an optional note, then downloads */
+  var noteBox=document.createElement('div'); noteBox.className='ver-note';
+  noteBox.innerHTML='<label for="ver-note-input">What changed? (optional, shown in the version history)</label>';
+  var noteInput=document.createElement('input'); noteInput.id='ver-note-input'; noteInput.type='text'; noteInput.maxLength=160;
+  noteInput.placeholder='e.g. Added the limit monitoring report';
+  var bDownload=btn('Download version','primary',doSave,'Download the new version');
+  var bCancelSave=btn('Cancel','',function(){askingNote=false;render();},'Back to editing');
+    noteBox.appendChild(noteInput); noteBox.appendChild(bDownload); noteBox.appendChild(bCancelSave);
+  noteInput.addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();doSave();} if(e.key==='Escape'){askingNote=false;render();} });
+  var askingNote=false;
+
+  function saveCopy(){
+    askingNote=true; noteInput.value=''; render();
+    noteBox.querySelector('label').textContent='Saving version '+(currentVersion()+1)+'. What changed? (optional)';
+    setTimeout(function(){noteInput.focus();},0);
+  }
+
+  async function doSave(){
+    var n=currentVersion()+1, now=new Date(), note=noteInput.value.trim();
+    var file='Risk_Engine_Guide_v'+n+'_'+isoLocal(now).slice(0,10)+'.html';
+    var html=buildHtml(function(clone){stampVersion(clone,n,now,note);});
+    try{
+      var dl=(window.claude&&window.claude.use)?await window.claude.use('downloads'):null;
+      if(dl){
+        await dl.save({filename:file,data:html});
+      }else{
+        var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a'); a.href=url; a.download=file; a.setAttribute('data-editor-ui','');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){URL.revokeObjectURL(url);},2000);
+      }
+      stampVersion(document,n,now,note);
+      askingNote=false; dirty=false; clearDraft(); render();
+      toast('Saved version '+n+' as '+file+'. Upload it to your site to publish the changes.');
+    }catch(err){
+      var code=err&&err.code;
+      if(code==='declined')toast('Download cancelled. Your edits are still on the page.');
+      else toast('The download did not start. Your edits are still on the page; try again.');
+    }
+  }
+
+  /* ---------- draft kept in this browser, in case the tab is closed ---------- */
+  function snapshot(){
+    return regions().map(function(r){return r.innerHTML;});
+  }
+  function saveDraft(){
+    try{localStorage.setItem(DRAFT_KEY,JSON.stringify({at:Date.now(),parts:snapshot()}));}catch(e){}
+  }
+  function clearDraft(){ try{localStorage.removeItem(DRAFT_KEY);}catch(e){} }
+  function offerDraft(){
+    var d=null; try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');}catch(e){}
+    if(!d||!d.parts||d.parts.length!==regions().length)return;
+    var same=snapshot().every(function(h,i){return h===d.parts[i];}); if(same){clearDraft();return;}
+    var box=document.createElement('div'); box.className='ed-draft gut'; box.setAttribute('data-editor-ui','');
+    var when=new Date(d.at).toLocaleString();
+    box.innerHTML='<div class="inner"><span>You have unsaved edits from '+when+' in this browser.</span></div>';
+    var inner=box.firstChild;
+    var r=document.createElement('button'); r.type='button'; r.textContent='Restore edits';
+    var x=document.createElement('button'); x.type='button'; x.textContent='Discard them';
+    r.onclick=function(){ regions().forEach(function(el,i){el.innerHTML=d.parts[i];}); box.remove(); dirty=true; render(); toast('Edits restored. Click Save new version to keep them in a file.'); };
+    x.onclick=function(){ clearDraft(); box.remove(); };
+    inner.appendChild(r); inner.appendChild(x);
+    var top=document.querySelector('header.top'); top.parentNode.insertBefore(box,top);
+  }
+
+  window.addEventListener('beforeunload',function(e){ if(dirty){e.preventDefault();e.returnValue='';} });
+
+  render();
+  offerDraft();
+})();
+</script>
+</body></html>
