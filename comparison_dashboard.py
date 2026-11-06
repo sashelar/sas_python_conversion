@@ -43,6 +43,7 @@ def run_comparisons(spark, datasets: list) -> tuple:
     """
     summary_records = []
     detail_records  = []
+    all_reports = []
     run_ts = datetime.now().isoformat()
 
     for ds in datasets:
@@ -67,6 +68,9 @@ def run_comparisons(spark, datasets: list) -> tuple:
                 df2_name=df2_name,
             )
             report = comparator.compare()
+            report["_dataset_name"] = name
+            all_reports.append(report)
+
 
             # ── flatten to summary row ───────────────────────────────────
             rc       = report.get("row_count", {})
@@ -78,30 +82,32 @@ def run_comparisons(spark, datasets: list) -> tuple:
             matching_cols = sum(1 for d in col_det.values() if d.get("all_values_match", False))
             match_pct     = round(matching_cols / total_cols * 100, 2) if total_cols > 0 else 0.0
 
-            summary_records.append({
-                "dataset_name":    name,
-                "df1_name":        df1_name,
-                "df2_name":        df2_name,
-                "run_timestamp":   run_ts,
-                "overall_match":   report.get("overall_match", False),
-                "row_count_match": rc.get("match", False),
-                "columns_match":   report.get("columns_match", False),
-                "schema_match":    report.get("schema", {}).get("schemas_match", False),
-                "data_status":     data_rpt.get("status", "SKIPPED"),
-                "df1_row_count":   rc.get("df1_count", 0),
-                "df2_row_count":   rc.get("df2_count", 0),
-                "row_diff":        rc.get("difference", 0),
-                "total_columns":   total_cols,
-                "matching_columns": matching_cols,
-                "match_pct":       match_pct,
-                "extra_in_df1":    cols_rpt.get("only_in_df1", []),
-                "extra_in_df2":    cols_rpt.get("only_in_df2", []),
-                "error":           None,
-            })
-
+            # summary_records.append({
+            #     "dataset_name":    name,
+            #     "df1_name":        df1_name,
+            #     "df2_name":        df2_name,
+            #     "run_timestamp":   run_ts,
+            #     "overall_match":   report.get("overall_match", False),
+            #     "row_count_match": rc.get("match", False),
+            #     "columns_match":   report.get("columns_match", False),
+            #     "schema_match":    report.get("schema", {}).get("schemas_match", False),
+            #     "data_status":     data_rpt.get("status", "SKIPPED"),
+            #     "df1_row_count":   rc.get("df1_count", 0),
+            #     "df2_row_count":   rc.get("df2_count", 0),
+            #     "row_diff":        rc.get("difference", 0),
+            #     "total_columns":   total_cols,
+            #     "matching_columns": matching_cols,
+            #     "match_pct":       match_pct,
+            #     "extra_in_df1":    cols_rpt.get("only_in_df1", []),
+            #     "extra_in_df2":    cols_rpt.get("only_in_df2", []),
+            #     "error":           None,
+            # })
+            data_match_pct = 0
             # ── flatten to detail rows ───────────────────────────────────
             for col_name, d in col_det.items():
                 stats = d.get("statistics", {})
+                print("match percentage",d.get("match_percentage", 0.0))
+                data_match_pct = d.get("match_percentage", 0.0) + data_match_pct
                 detail_records.append({
                     "dataset_name":    name,
                     "df1_name":        df1_name,
@@ -125,6 +131,30 @@ def run_comparisons(spark, datasets: list) -> tuple:
                     "sample_only_in_df2":   d.get("sample_only_in_df2", []),
                 })
 
+            print("before data_match_pct",data_match_pct)
+            data_match_pct = data_match_pct / total_cols
+            print("after data_match_pct",data_match_pct)
+            summary_records.append({
+                "dataset_name":    name,
+                "df1_name":        df1_name,
+                "df2_name":        df2_name,
+                "run_timestamp":   run_ts,
+                "overall_match":   report.get("overall_match", False),
+                "row_count_match": rc.get("match", False),
+                "columns_match":   report.get("columns_match", False),
+                "schema_match":    report.get("schema", {}).get("schemas_match", False),
+                "data_status":     data_rpt.get("status", "SKIPPED"),
+                "df1_row_count":   rc.get("df1_count", 0),
+                "df2_row_count":   rc.get("df2_count", 0),
+                "row_diff":        rc.get("difference", 0),
+                "total_columns":   total_cols,
+                "matching_columns": matching_cols,
+                "match_pct":       data_match_pct,
+                "extra_in_df1":    cols_rpt.get("only_in_df1", []),
+                "extra_in_df2":    cols_rpt.get("only_in_df2", []),
+                "error":           None,
+            })
+
             status = "PASS" if report.get("overall_match") else "FAIL"
             print(f"→ {status}  |  {match_pct}% data match  |  {matching_cols}/{total_cols} columns matched\n")
 
@@ -142,7 +172,35 @@ def run_comparisons(spark, datasets: list) -> tuple:
                 "extra_in_df1": [], "extra_in_df2": [], "error": str(e),
             })
 
-    return summary_records, detail_records
+    return summary_records, detail_records , all_reports
+
+
+def save_results(spark, summary_records, detail_records, adls_path):
+    """
+    Save comparison results to ADLS as JSON — call this once after running comparisons.
+    adls_path example: "abfss://container@storage.dfs.core.windows.net/comparison_results/"
+    """
+    import json
+    payload = {
+        "summary": summary_records,
+        "detail":  detail_records
+    }
+    payload_str = json.dumps(payload, default=str)
+    df = spark.createDataFrame([(payload_str,)], ["data"])
+    df.coalesce(1).write.mode("overwrite").text(adls_path)
+    print(f"✅ Results saved to: {adls_path}")
+
+def load_and_render(spark, adls_path):
+    """
+    Load saved results from ADLS and render dashboard — no comparisons re-run.
+    adls_path example: "abfss://container@storage.dfs.core.windows.net/comparison_results/"
+    """
+    import json
+    raw = spark.read.text(adls_path).collect()[0][0]
+    payload = json.loads(raw)
+    summary_json = json.dumps(payload["summary"], default=str)
+    detail_json  = json.dumps(payload["detail"],  default=str)
+    display(HTML(_build_html(summary_json, detail_json)))
 
 
 def render_dashboard(spark, datasets: list):
