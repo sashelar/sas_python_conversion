@@ -1,0 +1,535 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-size:14px}[hidden]{display:none!important}img{max-width:100%}</style><title>Comparison Report Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&display=swap">
+<style>
+/* Layout: reconciliation ledger. Load bar, summary of datasets, then one dataset at a time opened in place. */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --sunk:#e8ecee; --line:#d3dade; --fg:#1b2428; --muted:#5b686e;
+  --accent:#1f5f74; --accent-soft:#dcebf0;
+  --pass:#1d7a4c; --pass-soft:#dcf0e4; --fail:#b3361f; --fail-soft:#f8e1dc; --warn:#946400; --warn-soft:#f6ecd2;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12181b; --surface:#1a2226; --sunk:#222c31; --line:#2f3b41; --fg:#e4eaec; --muted:#9aa8ae;
+  --accent:#6fb6cc; --accent-soft:#1d3640;
+  --pass:#5cc78f; --pass-soft:#163326; --fail:#f08a73; --fail-soft:#3a1f19; --warn:#e2b84f; --warn-soft:#352b12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12181b; --surface:#1a2226; --sunk:#222c31; --line:#2f3b41; --fg:#e4eaec; --muted:#9aa8ae;
+  --accent:#6fb6cc; --accent-soft:#1d3640;
+  --pass:#5cc78f; --pass-soft:#163326; --fail:#f08a73; --fail-soft:#3a1f19; --warn:#e2b84f; --warn-soft:#352b12; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--f-body)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{padding-block:28px 18px}
+h1{font:750 clamp(26px,4vw,34px)/1.1 var(--f-display);margin:0 0 6px;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0;max-width:68ch}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.mono{font-size:.88em}
+button,.btn{font:inherit;font-size:14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px}
+button:hover,.btn:hover{border-color:var(--accent)}
+button:focus-visible,.btn:focus-within,input:focus-visible,summary:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+.btn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+/* loader */
+.load{display:flex;flex-wrap:wrap;gap:10px;align-items:center;border:1.5px dashed var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);margin-bottom:10px}
+.load.drag{border-color:var(--accent);background:var(--accent-soft)}
+.load p{margin:0;color:var(--muted);flex:1 1 260px;min-width:0}
+.srcline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin:0 0 18px}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.chip.example{background:var(--warn-soft);color:var(--warn)}
+.chip.file{background:var(--sunk);color:var(--fg);font-weight:400;letter-spacing:0}
+.pastebox{margin:0 0 18px}
+.pastebox textarea{width:100%;min-height:120px;font:13px/1.45 var(--f-mono);border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface);color:var(--fg)}
+.pastebox .row{display:flex;gap:8px;margin-top:8px}
+.err{background:var(--fail-soft);color:var(--fail);border-radius:8px;padding:10px 14px;margin:0 0 16px}
+
+/* totals */
+.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.tot{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.tot b{display:block;font:600 26px/1.1 var(--f-mono);font-variant-numeric:tabular-nums}
+.tot span{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.tot.pass b{color:var(--pass)} .tot.fail b{color:var(--fail)}
+
+/* toolbar */
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.search{flex:1 1 200px;min-width:0;font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--fg)}
+
+/* summary table */
+.tblwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;white-space:nowrap;background:var(--sunk)}
+th.sort{cursor:pointer;user-select:none}
+th.sort::after{content:"";margin-left:6px;opacity:.5}
+th[aria-sort="ascending"]::after{content:"▲";font-size:9px}
+th[aria-sort="descending"]::after{content:"▼";font-size:9px}
+td.r,th.r{text-align:right}
+tr.ds{cursor:pointer}
+tr.ds:hover td{background:var(--sunk)}
+tr.ds.open td{background:var(--accent-soft)}
+tr.ds td:first-child{border-left:4px solid transparent}
+tr.ds.st-fail td:first-child{border-left-color:var(--fail)}
+tr.ds.st-pass td:first-child{border-left-color:var(--pass)}
+tr.ds.st-warn td:first-child{border-left-color:var(--warn)}
+.dsname{font-weight:700}
+.vs{display:block;font-size:12px;color:var(--muted)}
+.pill{display:inline-block;border-radius:4px;padding:1px 8px;font-size:12px;font-weight:700;letter-spacing:.04em}
+.pill.pass{background:var(--pass-soft);color:var(--pass)}
+.pill.fail{background:var(--fail-soft);color:var(--fail)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.na{background:var(--sunk);color:var(--muted)}
+.meter{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.meter i{display:block;width:70px;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;flex:none}
+.meter i b{display:block;height:100%;background:var(--pass)}
+.meter.low i b{background:var(--fail)} .meter.mid i b{background:var(--warn)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* detail */
+.det{margin-top:14px;padding:18px 16px 22px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px}
+.det h2{font:700 20px/1.2 var(--f-display);margin:0 0 4px}
+.det .meta{color:var(--muted);font-size:13px;margin:0 0 16px;display:flex;flex-wrap:wrap;gap:4px 16px}
+.layers{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:20px}
+.layer{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.layer h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px;margin:0}
+.kv dt{color:var(--muted);min-width:0;overflow-wrap:anywhere} .kv dd{margin:0;text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{font:12px var(--f-mono);background:var(--sunk);border-radius:4px;padding:1px 6px;overflow-wrap:anywhere}
+.tag.fail{background:var(--fail-soft);color:var(--fail)}
+.small{font-size:13px;color:var(--muted);margin:6px 0 0}
+.colhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.colhead h3{font:700 16px var(--f-display);margin:0 auto 0 0}
+.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:10px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0;border-top:3px solid var(--pass)}
+.col.fail{border-top-color:var(--fail)} .col.warn{border-top-color:var(--warn)}
+.col .nm{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:6px}
+.col .nm b{font-family:var(--f-mono);font-size:14px;overflow-wrap:anywhere;min-width:0}
+.col .ty{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.stack{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--sunk);margin:8px 0 4px}
+.stack span{display:block;height:100%}
+.s-exact{background:var(--pass)} .s-fuzzy{background:var(--warn)} .s-miss{background:var(--fail)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-bottom:8px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.samples{margin-top:8px}
+.samples summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:700}
+.samples .tblwrap{margin-top:6px;border-radius:6px}
+.samples th,.samples td{padding:5px 8px;font-size:12px}
+.samples td{font-family:var(--f-mono);white-space:nowrap}
+.raw{margin-top:18px}
+.raw summary{cursor:pointer;color:var(--muted);font-size:13px}
+.raw pre{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;max-height:420px;font:12px/1.5 var(--f-mono)}
+footer.help{padding-block:28px 40px;color:var(--muted);font-size:13px}
+footer.help h2{font:700 15px var(--f-display);color:var(--fg);margin:0 0 6px}
+footer.help ol{margin:0;padding-left:20px;max-width:75ch}
+footer.help code{font:12px var(--f-mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
+@media (max-width:640px){
+  .hide-sm{display:none}
+  .cols{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head><body><div class="wrap">
+<header class="top">
+  <h1>Comparison Report Viewer</h1>
+  <p class="sub">Open the JSON written by <code class="mono">save_results()</code> or <code class="mono">save_report_to_json()</code> to see row counts, columns, schema and value differences per dataset, without rerunning the notebook. Nothing is uploaded: files are read in your browser.</p>
+</header>
+
+<section class="load" id="drop" aria-label="Load reports">
+  <label class="btn primary" for="file">Open report files<input type="file" id="file" multiple></label>
+  <button type="button" id="pasteBtn">Paste JSON</button>
+  <button type="button" id="exampleBtn">Show example</button>
+  <p>Or drop files here. Open the <span class="mono">part-00000…</span> file Spark wrote; several files at once also work.</p>
+</section>
+<div class="pastebox" id="pastebox" hidden>
+  <label for="pasteArea" class="small">Paste the report JSON:</label>
+  <textarea id="pasteArea" spellcheck="false" placeholder='{"df1_name": "SAS_ACCOUNT_LGAAP", "df2_name": "SPARK_ACCOUNT_LGAAP", "overall_match": false, ...}'></textarea>
+  <div class="row"><button type="button" class="btn primary" id="pasteGo">Show results</button><button type="button" id="pasteCancel">Cancel</button></div>
+</div>
+<p class="srcline" id="srcline"></p>
+<div class="err" id="err" hidden></div>
+
+<section class="totals" id="totals" aria-label="Totals"></section>
+
+<div class="bar">
+  <div class="seg" role="group" aria-label="Show datasets">
+    <button type="button" data-f="all" aria-pressed="true">All</button>
+    <button type="button" data-f="fail" aria-pressed="false">Failures</button>
+    <button type="button" data-f="pass" aria-pressed="false">Passes</button>
+  </div>
+  <input class="search" id="q" type="search" placeholder="Find a dataset" aria-label="Find a dataset">
+</div>
+<div class="tblwrap">
+<table id="sum">
+  <thead><tr>
+    <th class="sort" data-k="name">Dataset</th>
+    <th class="sort" data-k="status">Result</th>
+    <th class="sort r" data-k="rows1">Rows source</th>
+    <th class="sort r" data-k="rows2">Rows target</th>
+    <th class="hide-sm">Columns</th>
+    <th class="hide-sm">Schema</th>
+    <th class="sort r" data-k="avgPct">Data match (avg)</th>
+    <th class="sort r" data-k="badcols">Differing columns</th>
+  </tr></thead>
+  <tbody id="sumBody"></tbody>
+</table>
+</div>
+<section id="detail" aria-live="polite"></section>
+
+<footer class="help">
+  <h2>Getting the file out of Synapse</h2>
+  <ol>
+    <li>Save the results in the notebook. For all datasets of a run: <code>summary, detail, reports = run_comparisons(spark, datasets)</code> then <code>save_results(spark, summary, detail, path)</code>. For one dataset: <code>comparator.save_report_to_json(path)</code>.</li>
+    <li>In Synapse Studio, open <b>Data → Linked</b>, browse to that path and download the <code>part-00000…</code> file inside the folder Spark wrote.</li>
+    <li>Open that file here. The single report also lists which columns have a different data type; the <code>save_results</code> file only says whether the schema matches.</li>
+  </ol>
+</footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var STORE='compareViewer.last.v2';
+var state={reports:[],source:'',example:false,filter:'all',q:'',sort:{k:null,dir:1},open:null,colFilter:{}};
+
+/* ---------- helpers ---------- */
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function isObj(v){return v&&typeof v==='object'&&!Array.isArray(v)}
+function pick(o){if(!isObj(o))return undefined;for(var i=1;i<arguments.length;i++){var k=arguments[i];if(o[k]!==undefined&&o[k]!==null)return o[k];}return undefined}
+function num(v){if(v===undefined||v===null||v==='')return null;var n=Number(v);return isFinite(n)?n:null}
+function fmt(v,d){var n=num(v);if(n===null)return '—';if(d===undefined)d=Number.isInteger(n)?0:(Math.abs(n)<1?6:2);
+  return n.toLocaleString('en-GB',{minimumFractionDigits:0,maximumFractionDigits:d})}
+function pct(v){var n=num(v);return n===null?'—':(n>=99.995&&n<100?'99.99':n.toFixed(n===100||n===0?0:2))+'%'}
+function boolish(v){if(v===true||v===false)return v;if(typeof v==='string'){var s=v.trim().toUpperCase();if(['PASS','TRUE','MATCH','OK','YES','PASSED','SUCCESS'].indexOf(s)>=0)return true;if(['FAIL','FALSE','MISMATCH','NO','FAILED','KO'].indexOf(s)>=0)return false;}return null}
+function list(v){if(Array.isArray(v))return v;if(v==null)return [];if(typeof v==='string')return v?[v]:[];if(isObj(v))return Object.keys(v);return []}
+function pill(ok,labels){labels=labels||['PASS','FAIL'];if(ok===true)return '<span class="pill pass">'+labels[0]+'</span>';if(ok===false)return '<span class="pill fail">'+labels[1]+'</span>';if(ok==='warn')return '<span class="pill warn">'+(labels[2]||'FUZZY')+'</span>';return '<span class="pill na">n/a</span>'}
+
+/* ---------- parsing ---------- */
+function parseText(text,fname){
+  text=String(text).replace(/^﻿/,'').trim();
+  var out=[];
+  if(!text)return out;
+  var vals=[];
+  try{vals=[JSON.parse(text)]}catch(e){
+    // JSON lines (several reports, one per line)
+    var lines=text.split(/\r?\n/).filter(function(l){return l.trim()});
+    var ok=lines.length>0;
+    lines.forEach(function(l){try{vals.push(JSON.parse(l))}catch(e2){ok=false}});
+    if(!ok)throw new Error(fname+': this is not valid JSON ('+e.message+').');
+  }
+  vals.forEach(function(v){collect(v,null,out,fname)});
+  return out;
+}
+function looksLikeReport(o){return isObj(o)&&['row_count','data_comparison','overall_match','columns_match'].some(function(k){return k in o})}
+function isPayload(o){return isObj(o)&&Array.isArray(o.summary)&&(Array.isArray(o.detail)||o.detail===undefined)}
+function collect(v,key,out,fname){
+  if(typeof v==='string'){var t=v.trim();if(t[0]==='{'||t[0]==='['){try{v=JSON.parse(t)}catch(e){return}}else return;}
+  if(Array.isArray(v)){v.forEach(function(x){collect(x,null,out,fname)});return}
+  if(!isObj(v))return;
+  if(isPayload(v)){fromPayload(v,fname).forEach(function(r){out.push(r)});return}
+  if(looksLikeReport(v)){out.push(normalise(v,key,fname,v));return}
+  // a Spark text row read back as {"report_json": "..."} / {"data": "..."} / {"value": "..."}
+  var inner=pick(v,'report_json','data','value','report');
+  if(typeof inner==='string'||isObj(inner)){collect(inner,key,out,fname);return}
+  Object.keys(v).forEach(function(k){collect(v[k],k,out,fname)});
+}
+
+/* save_results() file: {"summary": [one row per dataset], "detail": [one row per column]} */
+function fromPayload(p,fname){
+  var det={};(p.detail||[]).forEach(function(d){(det[d.dataset_name]=det[d.dataset_name]||[]).push(d)});
+  return p.summary.map(function(s){
+    var cd={};(det[s.dataset_name]||[]).forEach(function(d){cd[d.column_name]={
+      column_name:d.column_name,data_type:d.data_type,comparison_type:d.comparison_type,all_values_match:d.all_values_match,
+      match_percentage:d.match_pct,exact_matches:d.exact_matches,mismatches:d.mismatches,only_in_df1:d.only_in_df1,only_in_df2:d.only_in_df2,
+      statistics:{average_difference:d.avg_diff,min_difference:d.min_diff,max_difference:d.max_diff,average_fuzzy_score:d.avg_fuzzy_score,min_fuzzy_score:d.min_fuzzy_score},
+      sample_mismatches:d.sample_mismatches,sample_only_in_df1:d.sample_only_in_df1,sample_only_in_df2:d.sample_only_in_df2}});
+    var rep={_dataset_name:s.dataset_name,df1_name:s.df1_name,df2_name:s.df2_name,comparison_timestamp:s.run_timestamp,overall_match:s.overall_match,
+      row_count:{df1_count:s.df1_row_count,df2_count:s.df2_row_count,difference:s.row_diff,match:s.row_count_match},
+      columns:{only_in_df1:s.extra_in_df1||[],only_in_df2:s.extra_in_df2||[],common_count:s.total_columns},columns_match:s.columns_match,
+      schema:{schemas_match:s.schema_match,_summary_only:true},
+      data_comparison:{status:s.data_status,column_details:cd}};
+    var r=normalise(rep,null,fname,{summary:s,detail:det[s.dataset_name]||[]});
+    r.error=s.error||null;if(r.error)r.status='error';
+    if(num(s.match_pct)!==null)r.avgPct=num(s.match_pct);
+    return r;
+  });
+}
+
+/* one report from DataFrameComparator.compare() / save_report_to_json() */
+function normalise(r,key,fname,raw){
+  var rc=r.row_count||{}, cc=r.columns||{}, sc=r.schema||{}, dc=r.data_comparison||{};
+  var d1=r.df1_name||'DF1', d2=r.df2_name||'DF2';
+  var rows1=num(rc.df1_count), rows2=num(rc.df2_count);
+  var rowMatch=boolish(rc.match);
+  var o1=list(cc.only_in_df1), o2=list(cc.only_in_df2), common=list(cc.common_columns);
+  var colMatch=boolish(r.columns_match);if(colMatch===null)colMatch=boolish(cc.match);
+  var tm=Array.isArray(sc.type_mismatches)?sc.type_mismatches:[];
+  var schMatch=boolish(sc.schemas_match);
+  var details=isObj(dc.column_details)?dc.column_details:{};
+  var cols=Object.keys(details).map(function(k){return normCol(k,details[k])});
+  var pcts=cols.map(function(c){return c.pct}).filter(function(p){return p!==null});
+  var overall=boolish(r.overall_match);
+  var bad=cols.filter(function(c){return c.status==='fail'}).length;
+  return {name:String(r._dataset_name||key||commonName(d1,d2)||fname),file:fname,df1:d1,df2:d2,ts:r.comparison_timestamp,
+    dataStatus:dc.status,dataMsg:dc.reason,error:null,
+    rows1:rows1,rows2:rows2,rowDiff:num(rc.difference),rowDiffPct:num(rc.difference_percentage),rowMatch:rowMatch,
+    common:common,commonCount:common.length||num(cc.common_count)||cols.length,colCount1:num(cc.column_count_df1),colCount2:num(cc.column_count_df2),
+    o1:o1,o2:o2,colMatch:colMatch,typeMis:tm,schMatch:schMatch,schSummaryOnly:!!sc._summary_only,
+    schema1:isObj(sc.df1_schema)?sc.df1_schema:null,schema2:isObj(sc.df2_schema)?sc.df2_schema:null,
+    cols:cols,avgPct:pcts.length?pcts.reduce(function(a,b){return a+b},0)/pcts.length:null,minPct:pcts.length?Math.min.apply(null,pcts):null,
+    bad:bad,warn:0,status:overall===true?'pass':overall===false?'fail':'na',raw:raw||r};
+}
+/* SAS_ACCOUNT_LGAAP + SPARK_ACCOUNT_LGAAP -> ACCOUNT_LGAAP */
+function commonName(a,b){
+  var i=0;while(i<a.length&&i<b.length&&a[a.length-1-i]===b[b.length-1-i])i++;
+  var s=a.slice(a.length-i).replace(/^[_\-.\s]+/,'');
+  return s.length>=3?s:(a+' vs '+b);
+}
+function normCol(name,c){
+  if(!isObj(c))c={};
+  var st=isObj(c.statistics)?c.statistics:{};
+  var exact=num(c.exact_matches), mis=num(c.mismatches), fuzzy=num(c.fuzzy_matches), p=num(c.match_percentage);
+  var ok=boolish(c.all_values_match);
+  if(ok===null&&p!==null)ok=p>=100;
+  var type=String(c.comparison_type||''), isNum=type==='numeric';
+  return {name:name,dtype:String(c.data_type||''),type:type,isNum:isNum,
+    total:exact!==null&&mis!==null?exact+mis:null,exact:exact,fuzzy:isNum?null:fuzzy,mis:mis,pct:p,
+    status:ok===true?'pass':ok===false?'fail':'na',
+    o1:num(c.only_in_df1),o2:num(c.only_in_df2),
+    avg:num(st.average_difference),min:num(st.min_difference),max:num(st.max_difference),sd:num(st.stddev_difference),
+    fAvg:num(st.average_fuzzy_score),fMin:num(st.min_fuzzy_score),fMax:num(st.max_fuzzy_score),fthr:c.fuzzy_threshold,
+    sDiff:Array.isArray(c.sample_mismatches)?c.sample_mismatches:[],
+    s1:Array.isArray(c.sample_only_in_df1)?c.sample_only_in_df1:[],
+    s2:Array.isArray(c.sample_only_in_df2)?c.sample_only_in_df2:[],raw:c};
+}
+
+/* ---------- render: totals + summary ---------- */
+function render(){
+  var R=state.reports;
+  $('#srcline').innerHTML=R.length?((state.example?'<span class="chip example">EXAMPLE DATA</span>':'')+state.source.split('\n').filter(Boolean).map(function(f){return '<span class="chip file">'+esc(f)+'</span>'}).join('')):'';
+  var pass=R.filter(function(r){return r.status==='pass'}).length, fail=R.filter(function(r){return r.status==='fail'||r.status==='error'}).length;
+  var aps=R.map(function(r){return r.avgPct}).filter(function(v){return v!==null}), avg=aps.length?aps.reduce(function(a,b){return a+b},0)/aps.length:null;
+  var badcols=R.reduce(function(a,r){return a+r.bad},0), allcols=R.reduce(function(a,r){return a+r.cols.length},0);
+  $('#totals').innerHTML=R.length?
+    '<div class="tot"><b>'+R.length+'</b><span>Datasets</span></div>'+
+    '<div class="tot pass"><b>'+pass+'</b><span>Passed</span></div>'+
+    '<div class="tot fail"><b>'+fail+'</b><span>Failed or error</span></div>'+
+    '<div class="tot"><b>'+pct(avg)+'</b><span>Average data match</span></div>'+
+    '<div class="tot'+(badcols?' fail':'')+'"><b>'+badcols+'<small style="font-size:14px;color:var(--muted)"> / '+allcols+'</small></b><span>Columns with differences</span></div>':'';
+  var rows=R.map(function(r,i){return {r:r,i:i}}).filter(function(x){
+    var r=x.r;if(state.filter==='fail'&&r.status==='pass')return false;if(state.filter==='pass'&&r.status!=='pass')return false;
+    if(state.q&&(r.name+' '+r.df1+' '+r.df2+' '+r.file).toLowerCase().indexOf(state.q.toLowerCase())<0)return false;return true});
+  var k=state.sort.k;
+  if(k){var order={error:0,fail:1,na:2,pass:3};rows.sort(function(a,b){
+    var va=k==='status'?order[a.r.status]:k==='badcols'?a.r.bad:a.r[k], vb=k==='status'?order[b.r.status]:k==='badcols'?b.r.bad:b.r[k];
+    if(va==null&&vb==null)return 0;if(va==null)return 1;if(vb==null)return -1;
+    return (typeof va==='string'?va.localeCompare(vb):va-vb)*state.sort.dir})}
+  $$('#sum th.sort').forEach(function(th){th.setAttribute('aria-sort',th.dataset.k===k?(state.sort.dir>0?'ascending':'descending'):'none')});
+  var h='';
+  if(!R.length)h='<tr><td colspan="8" class="empty">No reports loaded yet. Open a report file, paste JSON, or show the example.</td></tr>';
+  else if(!rows.length)h='<tr><td colspan="8" class="empty">No dataset matches this filter.</td></tr>';
+  rows.forEach(function(x){
+    var r=x.r,open=state.open===x.i;
+    var ap=r.avgPct;var m=ap===null?'—':'<span class="meter '+(ap<95?'low':ap<100?'mid':'')+'"><span class="num">'+pct(ap)+'</span><i><b style="width:'+Math.max(0,Math.min(100,ap))+'%"></b></i></span>';
+    h+='<tr class="ds st-'+r.status+(open?' open':'')+'" tabindex="0" data-i="'+x.i+'" aria-expanded="'+open+'">'+
+      '<td><span class="dsname">'+esc(r.name)+'</span><span class="vs">'+esc(r.df1)+' vs '+esc(r.df2)+'</span></td>'+
+      '<td>'+(r.status==='error'?'<span class="pill warn">ERROR</span>':pill(r.status==='pass'?true:r.status==='fail'?false:null))+(r.dataStatus==='SKIPPED'?' <span class="pill na">DATA SKIPPED</span>':'')+'</td>'+
+      '<td class="r num">'+fmt(r.rows1)+'</td>'+
+      '<td class="r num"'+(r.rowMatch===false?' style="color:var(--fail);font-weight:600"':'')+'>'+fmt(r.rows2)+'</td>'+
+      '<td class="hide-sm">'+(r.status==='error'?'—':pill(r.colMatch,['MATCH','DIFFERENT']))+'</td>'+
+      '<td class="hide-sm">'+(r.status==='error'?'—':pill(r.schMatch,['MATCH','DIFFERENT']))+'</td>'+
+      '<td class="r">'+m+'</td>'+
+      '<td class="r num">'+(r.cols.length?r.bad+' <span style="color:var(--muted)">/ '+r.cols.length+'</span>':'—')+'</td></tr>';
+  });
+  $('#sumBody').innerHTML=h;
+  var o=state.open!==null&&R[state.open]&&rows.some(function(x){return x.i===state.open});
+  $('#detail').innerHTML=o?detail(R[state.open],state.open):'';
+}
+
+/* ---------- render: one dataset ---------- */
+function detail(r,i){
+  var meta=[];
+  if(r.ts)meta.push('Compared '+esc(String(r.ts).replace('T',' ').slice(0,19)));
+  meta.push('File: '+esc(r.file));
+  var diff=r.rowDiff!==null?r.rowDiff:(r.rows1!==null&&r.rows2!==null?r.rows2-r.rows1:null);
+  var diffPct=r.rowDiffPct!==null?r.rowDiffPct:(diff!==null&&r.rows1?Math.abs(diff)/r.rows1*100:null);
+  var h='<div class="det"><h2>'+esc(r.name)+'</h2><p class="meta">'+meta.map(function(m){return '<span>'+m+'</span>'}).join('')+'</p>'+(r.error?'<p class="err" style="margin:0 0 14px">The comparison stopped with an error: '+esc(r.error)+'</p>':'')+'<div class="layers">';
+  h+='<div class="layer"><h3>Row count '+pill(r.rowMatch,['MATCH','DIFFERENT'])+'</h3><dl class="kv">'+
+     '<dt>'+esc(r.df1)+'</dt><dd>'+fmt(r.rows1)+'</dd><dt>'+esc(r.df2)+'</dt><dd>'+fmt(r.rows2)+'</dd>'+
+     '<dt>Difference</dt><dd>'+(diff===null?'—':(diff>0?'+':'')+fmt(diff))+(diffPct!==null&&diff?' ('+fmt(diffPct,4)+'%)':'')+'</dd></dl></div>';
+  h+='<div class="layer"><h3>Columns '+pill(r.colMatch,['MATCH','DIFFERENT'])+'</h3><dl class="kv">'+(r.colCount1!==null?'<dt>'+esc(r.df1)+'</dt><dd>'+r.colCount1+'</dd><dt>'+esc(r.df2)+'</dt><dd>'+r.colCount2+'</dd>':'')+'<dt>Compared (in both)</dt><dd>'+(r.commonCount||'—')+'</dd>'+
+     '<dt>Only in '+esc(r.df1)+'</dt><dd>'+r.o1.length+'</dd><dt>Only in '+esc(r.df2)+'</dt><dd>'+r.o2.length+'</dd></dl>'+
+     (r.o1.length?'<p class="small">Only in '+esc(r.df1)+':</p><div class="tags">'+r.o1.map(function(c){return '<span class="tag fail">'+esc(c)+'</span>'}).join('')+'</div>':'')+
+     (r.o2.length?'<p class="small">Only in '+esc(r.df2)+':</p><div class="tags">'+r.o2.map(function(c){return '<span class="tag fail">'+esc(c)+'</span>'}).join('')+'</div>':'')+'</div>';
+  h+='<div class="layer"><h3>Schema '+pill(r.schMatch,['MATCH','DIFFERENT'])+'</h3>'+
+     (r.typeMis.length?'<div class="tblwrap"><table><thead><tr><th>Column</th><th>'+esc(r.df1)+'</th><th>'+esc(r.df2)+'</th></tr></thead><tbody>'+
+       r.typeMis.map(function(t){if(!isObj(t))return '<tr><td colspan="3" class="mono">'+esc(t)+'</td></tr>';
+         return '<tr><td class="mono">'+esc(pick(t,'column','column_name','name'))+'</td><td class="mono">'+esc(pick(t,'df1_type','source_type','type1'))+'</td><td class="mono">'+esc(pick(t,'df2_type','target_type','type2'))+'</td></tr>'}).join('')+
+       '</tbody></table></div>':'<p class="small" style="margin:0">'+(r.schMatch===null?'Not in this report.':r.schMatch?'Same columns with the same data types.':r.schSummaryOnly?'Types differ. The dashboard file does not say which columns; the single report JSON does.':'Same data types for the common columns, but the column lists differ.')+'</p>')+'</div>';
+  h+='<div class="layer"><h3>Values '+(r.cols.length?pill(!r.bad,['MATCH','DIFFERENT']):pill(null))+'</h3><dl class="kv">'+
+     '<dt>Columns compared</dt><dd>'+r.cols.length+'</dd><dt>Fully matching</dt><dd>'+r.cols.filter(function(c){return c.status==='pass'}).length+'</dd>'+
+     '<dt>With differences</dt><dd>'+r.bad+'</dd><dt>Average match</dt><dd>'+pct(r.avgPct)+'</dd><dt>Lowest match</dt><dd>'+pct(r.minPct)+'</dd></dl>'+
+     (r.dataStatus&&String(r.dataStatus).toUpperCase()!=='COMPLETED'&&!r.cols.length?'<p class="small">Status: '+esc(r.dataStatus)+(r.dataMsg?' · '+esc(r.dataMsg):'')+'</p>':'')+'</div>';
+  h+='</div>';
+  if(r.cols.length){
+    var cf=state.colFilter[i]||{f:'diff',q:''};
+    if(!r.bad&&!state.colFilter[i])cf.f='all';
+    h+='<div class="colhead"><h3>Column by column</h3><div class="seg" role="group" aria-label="Show columns">'+
+      ['diff','all','pass'].map(function(f){return '<button type="button" data-cf="'+f+'" data-i="'+i+'" aria-pressed="'+(cf.f===f)+'">'+{diff:'With differences',all:'All',pass:'Matching'}[f]+'</button>'}).join('')+
+      '</div><input class="search" data-cq="'+i+'" type="search" placeholder="Find a column" aria-label="Find a column" value="'+esc(cf.q)+'"></div>';
+    var cs=r.cols.filter(function(c){if(cf.f==='diff'&&c.status==='pass')return false;if(cf.f==='pass'&&c.status!=='pass')return false;
+      if(cf.q&&c.name.toLowerCase().indexOf(cf.q.toLowerCase())<0)return false;return true});
+    var rank={fail:0,na:1,pass:2};
+    cs.sort(function(a,b){return rank[a.status]-rank[b.status]||(a.pct==null?1:b.pct==null?-1:a.pct-b.pct)||a.name.localeCompare(b.name)});
+    h+='<div class="cols" id="cols-'+i+'">'+(cs.length?cs.map(function(c){return colCard(c,r)}).join(''):'<p class="small">No column matches this filter.</p>')+'</div>';
+  }
+  h+='<details class="raw"><summary>Show the report JSON</summary><pre>'+esc(JSON.stringify(r.raw,null,2))+'</pre></details></div>';
+  return h;
+}
+function colCard(c,r){
+  var t=c.total||0;
+  var fz=c.fuzzy||0, diffOnly=Math.max(0,(c.mis||0)-fz);
+  var w=function(v){return t?Math.max(0,(v||0)/t*100):0};
+  var h='<div class="col '+c.status+'"><div class="nm"><b>'+esc(c.name)+'</b><span class="ty">'+esc(c.dtype)+(c.type?' · '+esc(c.type==='string_fuzzy'?'text':c.type):'')+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="num" style="font-size:20px;font-weight:600;color:'+(c.status==='fail'?'var(--fail)':'var(--pass)')+'">'+pct(c.pct)+'</span><span class="small" style="margin:0">exact match</span></div>';
+  if(t)h+='<div class="stack" aria-hidden="true"><span class="s-exact" style="width:'+w(c.exact)+'%"></span><span class="s-fuzzy" style="width:'+w(fz)+'%"></span><span class="s-miss" style="width:'+w(diffOnly)+'%"></span></div>'+
+    '<div class="legend"><span><i class="s-exact"></i>'+fmt(c.exact)+' exact</span>'+(fz?'<span><i class="s-fuzzy"></i>'+fmt(fz)+' close (fuzzy)</span>':'')+'<span><i class="s-miss"></i>'+fmt(diffOnly)+' different</span></div>';
+  var kv=[];
+  kv.push(['Mismatches',fmt(c.mis)]);
+  if(c.o1)kv.push(['Value only in '+r.df1,fmt(c.o1)]);
+  if(c.o2)kv.push(['Value only in '+r.df2,fmt(c.o2)]);
+  if(c.isNum){
+    if(c.avg!==null)kv.push(['Average difference',fmt(c.avg,4)]);
+    if(c.min!==null||c.max!==null)kv.push(['Min / max difference',fmt(c.min,4)+' / '+fmt(c.max,4)]);
+    if(c.sd)kv.push(['Std deviation',fmt(c.sd,4)]);
+  }else{
+    if(c.fAvg!==null)kv.push(['Average fuzzy score',fmt(c.fAvg,4)]);
+    if(c.fMin!==null)kv.push(['Lowest fuzzy score',fmt(c.fMin,4)]);
+    if(c.fthr!=null)kv.push(['Fuzzy threshold',esc(c.fthr)]);
+  }
+  h+='<dl class="kv">'+kv.map(function(p){return '<dt>'+esc(p[0])+'</dt><dd>'+p[1]+'</dd>'}).join('')+'</dl>';
+  var n=c.sDiff.length+c.s1.length+c.s2.length;
+  if(n){
+    h+='<details class="samples"'+(c.status==='fail'?' open':'')+'><summary>'+n+' sample row'+(n>1?'s':'')+'</summary>';
+    h+=sampleTable('Different values',c.sDiff,c,r,'both');
+    h+=sampleTable('Only in '+r.df1,c.s1,c,r,'df1');
+    h+=sampleTable('Only in '+r.df2,c.s2,c,r,'df2');
+    h+='</details>';
+  }
+  return h+'</div>';
+}
+/* sample rows: key is the first join key; the missing side is shown as missing (the comparator stores 0 for numbers) */
+function sampleTable(title,rows,c,r,side){
+  if(!rows.length)return '';
+  var miss='<span style="color:var(--muted)">missing</span>';
+  var val=function(v,isMissing){if(isMissing||v==null||v==='missing row or value')return miss;return esc(c.isNum&&typeof v==='number'?fmt(v,6):v)};
+  return '<p class="small" style="font-weight:700;margin-top:10px">'+esc(title)+'</p><div class="tblwrap"><table><thead><tr><th>Key</th><th>'+esc(r.df1)+'</th><th>'+esc(r.df2)+'</th><th>'+(c.isNum?'Difference':'Score')+'</th></tr></thead><tbody>'+
+    rows.map(function(s){
+      var extra=c.isNum?(typeof s.difference==='number'?fmt(s.difference,6):'—'):(s.fuzzy_score!=null&&side==='both'?fmt(s.fuzzy_score,4)+(s.fuzzy_match?' <span class="pill warn">close</span>':''):'—');
+      return '<tr><td>'+(s.key==null||s.key==='missing row or value'?miss:esc(s.key))+'</td><td>'+val(s.df1_value,side==='df2')+'</td><td>'+val(s.df2_value,side==='df1')+'</td><td>'+extra+'</td></tr>'}).join('')+
+    '</tbody></table></div>';
+}
+
+/* ---------- loading ---------- */
+function showErr(m){var e=$('#err');e.hidden=!m;e.textContent=m||''}
+function setReports(reps,source,example,texts){
+  state.reports=reps;state.source=source;state.example=!!example;state.open=reps.length===1?0:null;state.colFilter={};
+  render();
+  if(!example&&texts){try{localStorage.setItem(STORE,JSON.stringify({source:source,texts:texts}))}catch(e){try{localStorage.removeItem(STORE)}catch(_){}}}
+}
+function loadFiles(files){
+  files=Array.prototype.slice.call(files||[]);if(!files.length)return;
+  showErr('');
+  Promise.all(files.map(function(f){return f.text().then(function(t){return {name:f.name,text:t}})})).then(function(arr){
+    var reps=[],errs=[];
+    arr.forEach(function(a){try{var got=parseText(a.text,a.name);if(!got.length)errs.push(a.name+': no comparison report found in this file.');reps=reps.concat(got)}catch(e){errs.push(e.message)}});
+    if(errs.length)showErr(errs.join(' '));
+    if(reps.length)setReports(reps,arr.map(function(a){return a.name}).join('\n'),false,arr);
+  }).catch(function(){showErr('The file could not be read. Try opening it again.')});
+}
+$('#file').addEventListener('change',function(e){loadFiles(e.target.files);e.target.value=''});
+var drop=$('#drop');
+['dragenter','dragover'].forEach(function(t){document.addEventListener(t,function(e){e.preventDefault();drop.classList.add('drag')})});
+['dragleave','drop'].forEach(function(t){document.addEventListener(t,function(e){e.preventDefault();if(t==='drop'||!e.relatedTarget)drop.classList.remove('drag')})});
+document.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files.length)loadFiles(e.dataTransfer.files)});
+$('#pasteBtn').addEventListener('click',function(){$('#pastebox').hidden=false;$('#pasteArea').focus()});
+$('#pasteCancel').addEventListener('click',function(){$('#pastebox').hidden=true});
+$('#pasteGo').addEventListener('click',function(){
+  showErr('');try{var reps=parseText($('#pasteArea').value,'pasted JSON');if(!reps.length){showErr('No comparison report found in the pasted text.');return}
+  setReports(reps,'pasted JSON',false,[{name:'pasted JSON',text:$('#pasteArea').value}]);$('#pastebox').hidden=true;$('#pasteArea').value=''}catch(e){showErr(e.message)}});
+$('#exampleBtn').addEventListener('click',function(){showErr('');setReports(example(),'',true)});
+
+/* ---------- interaction ---------- */
+$$('.bar .seg button').forEach(function(b){b.addEventListener('click',function(){state.filter=b.dataset.f;$$('.bar .seg button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});render()})});
+$('#q').addEventListener('input',function(e){state.q=e.target.value;render()});
+$$('#sum th.sort').forEach(function(th){th.addEventListener('click',function(){var k=th.dataset.k;state.sort.dir=state.sort.k===k?-state.sort.dir:(k==='name'||k==='status'?1:-1);state.sort.k=k;render()})});
+function toggle(tr){var i=+tr.dataset.i;state.open=state.open===i?null:i;render();
+  if(state.open!==null){var d=$('#detail .det');if(d&&d.getBoundingClientRect().top>window.innerHeight-80)d.scrollIntoView({behavior:'smooth',block:'start'})}}
+$('#sumBody').addEventListener('click',function(e){var tr=e.target.closest('tr.ds');if(tr)toggle(tr)});
+$('#detail').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-cf]');
+  if(b){var i=+b.dataset.i;var cf=state.colFilter[i]||{f:'diff',q:''};cf.f=b.dataset.cf;state.colFilter[i]=cf;render()}});
+$('#sumBody').addEventListener('keydown',function(e){var tr=e.target.closest&&e.target.closest('tr.ds');if(tr&&(e.key==='Enter'||e.key===' ')&&e.target===tr){e.preventDefault();toggle(tr)}});
+$('#detail').addEventListener('input',function(e){var inp=e.target.closest('input[data-cq]');if(!inp)return;var i=+inp.dataset.cq;var cf=state.colFilter[i]||{f:'diff',q:''};cf.q=inp.value;state.colFilter[i]=cf;
+  var pos=inp.selectionStart;render();var n=$('input[data-cq="'+i+'"]');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}});
+
+/* ---------- example data (clearly marked) ---------- */
+function example(){
+  var ts='2026-11-05T16:42:10.512304';
+  function num(ex,mis,o1,o2,st,sd,s1,s2){return {column_name:'',data_type:'double',comparison_type:'numeric',exact_matches:ex,mismatches:mis,only_in_df1:o1,only_in_df2:o2,all_values_match:mis===0,match_percentage:Math.round(ex/(ex+mis)*10000)/100,statistics:st,sample_mismatches:sd||[],sample_only_in_df1:s1||[],sample_only_in_df2:s2||[]}}
+  function str(ex,mis,fz,o1,o2,st,sd,s1,s2){return {column_name:'',data_type:'string',comparison_type:'string_fuzzy',exact_matches:ex,fuzzy_matches:fz,mismatches:mis,only_in_df1:o1,only_in_df2:o2,all_values_match:mis===0,match_percentage:Math.round(ex/(ex+mis)*10000)/100,fuzzy_threshold:0.8,statistics:st,sample_mismatches:sd||[],sample_only_in_df1:s1||[],sample_only_in_df2:s2||[]}}
+  var zero={average_difference:0,min_difference:0,max_difference:0,stddev_difference:0};
+  var M='missing row or value';
+  var reps=[
+  {_dataset_name:'ACCOUNT_LGAAP',df1_name:'SAS_ACCOUNT_LGAAP',df2_name:'SPARK_ACCOUNT_LGAAP',comparison_timestamp:ts,overall_match:false,
+   row_count:{df1_count:48213,df2_count:48211,difference:-2,match:false,difference_percentage:0},
+   columns:{common_columns:['ACCRUED_INTEREST','BOOK_VALUE','ISIN','ISSUER_NAME','PORTFOLIO_ID','REPORTING_DATE'],only_in_df1:['SAS_ROWID'],only_in_df2:[],column_count_df1:7,column_count_df2:6,match:false},columns_match:false,
+   schema:{type_mismatches:[{column:'REPORTING_DATE',df1_type:'StringType()',df2_type:'DateType()'}],schemas_match:false},
+   data_comparison:{status:'COMPLETED',columns_compared:6,column_details:{
+     BOOK_VALUE:num(48168,45,2,0,{average_difference:0.0031,min_difference:-0.01,max_difference:0.02,stddev_difference:0.0049},
+       [{key:'P2210',df1_value:1250000.005,df2_value:1250000.01,difference:0.005},{key:'P2210',df1_value:88412.335,df2_value:88412.34,difference:0.005}],
+       [{key:'P1043',df1_value:15000.0,df2_value:0,difference:M,is_decimal_change:M}]),
+     ACCRUED_INTEREST:num(48211,2,2,0,zero,[],[{key:'P1043',df1_value:112.5,df2_value:0,difference:M,is_decimal_change:M}]),
+     ISIN:str(48211,2,0,2,0,{average_fuzzy_score:1,min_fuzzy_score:1,max_fuzzy_score:1},[],[{key:'P1043',df1_value:'BE0000348574',df2_value:M,fuzzy_score:0,fuzzy_match:false}]),
+     ISSUER_NAME:str(47902,311,309,2,0,{average_fuzzy_score:0.9993,min_fuzzy_score:0.8125,max_fuzzy_score:1},
+       [{key:'P3001',df1_value:'Société Générale',df2_value:'Societe Generale',fuzzy_score:0.875,fuzzy_match:true},{key:'P3001',df1_value:'KINGDOM OF BELGIUM ',df2_value:'KINGDOM OF BELGIUM',fuzzy_score:0.9474,fuzzy_match:true}]),
+     PORTFOLIO_ID:str(48213,0,0,0,0,{average_fuzzy_score:1,min_fuzzy_score:1,max_fuzzy_score:1}),
+     REPORTING_DATE:str(48211,2,0,2,0,{average_fuzzy_score:1,min_fuzzy_score:1,max_fuzzy_score:1})}}},
+  {_dataset_name:'HOLDING_PERIOD_IFRS',df1_name:'SAS_HOLDING_PERIOD_IFRS',df2_name:'SPARK_HOLDING_PERIOD_IFRS',comparison_timestamp:ts,overall_match:true,
+   row_count:{df1_count:12904,df2_count:12904,difference:0,match:true,difference_percentage:0},
+   columns:{common_columns:['HOLDING_DAYS','PORTFOLIO_ID','QUANTITY'],only_in_df1:[],only_in_df2:[],column_count_df1:3,column_count_df2:3,match:true},columns_match:true,
+   schema:{type_mismatches:[],schemas_match:true},
+   data_comparison:{status:'COMPLETED',columns_compared:3,column_details:{
+     HOLDING_DAYS:num(12904,0,0,0,zero),QUANTITY:num(12904,0,0,0,zero),PORTFOLIO_ID:str(12904,0,0,0,0,{average_fuzzy_score:1,min_fuzzy_score:1,max_fuzzy_score:1})}}},
+  {_dataset_name:'INVESTMENT_SII',df1_name:'SAS_INVESTMENT_SII',df2_name:'SPARK_INVESTMENT_SII',comparison_timestamp:ts,overall_match:false,
+   row_count:{df1_count:9377,df2_count:9377,difference:0,match:true,difference_percentage:0},
+   columns:{common_columns:['ASSET_ID','INVESTMENT_CATEGORY_SOLVENCY','INVESTMENT_SII_VALUE'],only_in_df1:[],only_in_df2:['LOAD_TS'],column_count_df1:3,column_count_df2:4,match:false},columns_match:false,
+   schema:{type_mismatches:[],schemas_match:false},
+   data_comparison:{status:'COMPLETED',columns_compared:3,column_details:{
+     ASSET_ID:str(9377,0,0,0,0,{average_fuzzy_score:1,min_fuzzy_score:1,max_fuzzy_score:1}),
+     INVESTMENT_SII_VALUE:num(9377,0,0,0,zero),
+     INVESTMENT_CATEGORY_SOLVENCY:str(9301,76,12,0,0,{average_fuzzy_score:0.9871,min_fuzzy_score:0.2105,max_fuzzy_score:1},
+       [{key:'A0081123',df1_value:'Corporate bonds',df2_value:'Collateralised securities',fuzzy_score:0.2105,fuzzy_match:false},{key:'A0081150',df1_value:'Equity - listed',df2_value:'Equity - unlisted',fuzzy_score:0.8824,fuzzy_match:true}])}}}];
+  return reps.map(function(r){Object.keys(r.data_comparison.column_details).forEach(function(k){r.data_comparison.column_details[k].column_name=k});return normalise(r,null,'example.json')});
+}
+
+/* ---------- start: last opened reports, otherwise the example ---------- */
+(function start(){
+  var saved=null;try{saved=JSON.parse(localStorage.getItem(STORE)||'null')}catch(e){}
+  var reps=[];
+  if(saved&&saved.texts){try{saved.texts.forEach(function(t){reps=reps.concat(parseText(t.text,t.name))})}catch(e){reps=[]}}
+  if(reps.length){state.reports=reps;state.source=saved.source||'';state.example=false;state.open=reps.length===1?0:null;render()}
+  else{state.reports=example();state.example=true;state.open=0;render()}
+})();
+})();
+</script>
+</body></html>
