@@ -1,0 +1,1256 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-size:14px}[hidden]{display:none!important}img{max-width:100%}</style><title>Metadata Import Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: page header + sticky two-tab bar; each tab = side index + reading column */
+:root{
+  --bg:#F5F7F9; --surface:#FFFFFF; --ink:#18222E; --muted:#56657A; --line:#DCE2EA;
+  --accent:#1D5C8C; --accent-soft:#E3EEF7; --amber:#9A5B0C; --amber-soft:#FBF0DE;
+  --green:#2D6A4F; --green-soft:#E2F1E8; --codebg:#EEF2F6;
+  --f-display:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1120px;margin:0 auto}
+a{color:var(--accent)}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--f-mono);font-size:.86rem;line-height:1.55;background:var(--codebg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:16px 0 0;color:var(--ink)}
+pre .c{color:var(--muted)}
+pre .k{color:var(--accent)}
+
+header.top{padding-block:36px 20px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 8px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(2rem,4vw,2.75rem);font-weight:650}
+h2{font-size:1.65rem;font-weight:650;margin-bottom:12px}
+h3{font-size:1.15rem;font-weight:650;margin-bottom:6px}
+.lede{font-size:1.1rem;color:var(--muted);max-width:62ch;margin:12px 0 0}
+
+/* tabs */
+.tabbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px}
+.tab{appearance:none;border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:12px 18px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.tab small{font-weight:400;font-size:12px;color:var(--muted)}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+
+.panelwrap{display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px;padding-block:28px 80px}
+nav.index{position:sticky;top:calc(84px + env(safe-area-inset-top,0px));align-self:start;font-size:14px;max-height:calc(100vh - 100px - env(safe-area-inset-top,0px));overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}
+nav.index p{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+nav.index ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;border-left:1px solid var(--line)}
+nav.index a{display:block;padding:5px 12px;color:var(--muted);text-decoration:none;margin-left:-1px;border-left:2px solid transparent}
+nav.index a:hover,nav.index a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+main{min-width:0}
+section{padding-block:12px 36px;border-bottom:1px solid var(--line);margin-bottom:28px;scroll-margin-top:96px}
+section:last-of-type{border-bottom:0}
+section > p,.prose{max-width:66ch}
+.oneliner{background:var(--accent-soft);border-left:3px solid var(--accent);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:16px 0}
+.oneliner b{color:var(--accent)}
+.crosslink{font-size:.92rem;color:var(--muted);margin-top:14px}
+.crosslink button{appearance:none;border:0;background:none;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0}
+
+/* pipeline */
+.pipe{display:grid;margin-top:20px}
+.stage{display:grid;grid-template-columns:44px minmax(0,1fr);gap:16px}
+.stage .rail{display:flex;flex-direction:column;align-items:center}
+.stage .dot{width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);color:var(--accent);font-family:var(--f-mono);font-size:13px;font-weight:500;display:grid;place-items:center;flex:none}
+.stage .rail::after{content:"";flex:1;width:2px;background:var(--line);margin:4px 0}
+.stage:last-child .rail::after{display:none}
+.stage .body{padding-bottom:22px;min-width:0}
+.stage .body h3{margin-top:4px}
+.stage .body p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;font-family:var(--f-body)}
+.tag.done{background:var(--green-soft);color:var(--green)}
+.tag.next{background:var(--amber-soft);color:var(--amber)}
+
+.boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.box .code-big{font-family:var(--f-mono);font-size:1.25rem;color:var(--accent);font-weight:500}
+.box .what{font-weight:600}
+.box p{margin:0;color:var(--muted);font-size:.95rem}
+.meter{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted)}
+.meter .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}
+.meter .bar i{display:block;height:100%;background:var(--amber)}
+
+.tbl{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;min-width:600px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.mono{font-family:var(--f-mono);font-size:.88rem;white-space:nowrap;color:var(--accent)}
+
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}
+.panel h3{font-family:var(--f-body);font-size:1rem;font-weight:600}
+.panel p,.panel ul{margin:6px 0 0;color:var(--muted);font-size:.95rem}
+.panel ul{padding-left:18px}
+.example{font-family:var(--f-mono);font-size:.9rem;background:var(--surface);border:1px dashed var(--line);border-radius:6px;padding:12px 14px;margin-top:16px;max-width:66ch}
+.example span{display:inline-block;min-width:150px;color:var(--muted)}
+.example div{overflow-wrap:anywhere}
+
+.chain{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:18px}
+.chain .node{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;flex:1 1 150px;min-width:0}
+.chain .node b{display:block;font-size:.95rem}
+.chain .node small{color:var(--muted);font-size:.85rem;display:block;margin-top:2px;overflow-wrap:anywhere}
+.chain .node .v{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);margin-top:8px;display:block;overflow-wrap:anywhere}
+.chain .arrow{align-self:center;color:var(--muted);font-family:var(--f-mono)}
+.note{font-size:.92rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:20px;max-width:66ch}
+.warn{background:var(--amber-soft);border-left:3px solid var(--amber);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:20px 0 0;font-size:.95rem}
+.warn b{color:var(--amber)}
+
+.detail-list{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 16px}
+.detail-list summary{cursor:pointer;font-weight:600;padding:12px 0;color:var(--accent);list-style-position:outside}
+.detail-list summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.detail-list[open] summary{border-bottom:1px solid var(--line);margin-bottom:16px}
+.detail-list[open]{padding-bottom:12px}
+.detail-list h3{font-family:var(--f-body);font-size:.95rem;font-weight:600;margin:14px 0 6px}
+ol.nb{margin:0;padding-left:22px;display:grid;gap:3px;font-size:.92rem}
+.gsearch{width:100%;max-width:420px;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);margin-top:8px}
+.gsearch:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+dl.gloss{display:grid;grid-template-columns:minmax(140px,200px) minmax(0,1fr);margin:16px 0 0;border-top:1px solid var(--line)}
+dl.gloss dt,dl.gloss dd{padding:10px 0;border-bottom:1px solid var(--line);margin:0}
+dl.gloss dt{font-weight:600;padding-right:16px}
+dl.gloss dd{color:var(--muted)}
+.empty{color:var(--muted);font-style:italic;margin-top:12px}
+
+@media (max-width:860px){
+  .panelwrap{grid-template-columns:minmax(0,1fr);gap:8px;padding-block:20px 60px}
+  nav.index{position:static;max-height:none;overflow:visible}
+  nav.index ol{display:flex;flex-wrap:wrap;gap:6px;border:0}
+  nav.index a{border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:0;background:var(--surface)}
+  .boxes,.cols2{grid-template-columns:minmax(0,1fr)}
+  dl.gloss{grid-template-columns:minmax(0,1fr)}
+  dl.gloss dt{border-bottom:0;padding-bottom:0}
+  .chain .arrow{display:none}
+  .tab{padding:10px 12px}
+}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<style data-page="inv">table.inv td:last-child{min-width:260px}table.inv code{white-space:normal}</style>
+</head><body><header class="top gut"><div class="inner">
+  <p class="eyebrow">Risk Engine · Source data preparation</p>
+  <h1>Metadata Import Guide</h1>
+  <p class="lede">How the Risk Engine reads Excel files, source extracts and QRT templates into standard tables, driven by three metadata workbooks and the values chosen at the start of each run.</p>
+  <p class="crosslink" style="margin-top:10px"><a id="main-guide-link" href="Risk_Engine_Guide.html" data-online-href="https://claude.ai/artifact/4akcq9gGrGbrmYHB8ug86i">← Back to the Risk Engine Guide</a></p>
+</div></header>
+
+<div class="tabbar gut"><div class="inner tabs" role="tablist" aria-label="Guide views">
+  <button class="tab" role="tab" id="tab-business" aria-controls="business" aria-selected="true">How it works<small>For business users</small></button>
+  <button class="tab" role="tab" id="tab-technical" aria-controls="technical" aria-selected="false" tabindex="-1">Maintainer guide<small>For metadata maintainers</small></button>
+</div></div>
+
+<!-- ===================== HOW IT WORKS ===================== -->
+<div class="gut" role="tabpanel" id="business" aria-labelledby="tab-business"><div class="inner panelwrap">
+<nav class="index" aria-label="How it works contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#b-idea">The idea</a></li>
+    <li><a href="#b-steps">The four steps</a></li>
+    <li><a href="#b-anim">Watch an import run</a></li>
+    <li><a href="#b-three">Three workbooks</a></li>
+    <li><a href="#b-example">A real example</a></li>
+    <li><a href="#b-add">Adding a new file</a></li>
+    <li><a href="#b-glossary">Glossary</a></li>
+  </ol>
+</nav>
+<main>
+<section id="b-idea">
+  <h2>The idea: a workbook of instructions</h2>
+  <p>The Risk Engine needs well over a hundred inputs: correlation matrices, shock parameters, mapping tables, cash flows, technical provisions, regulatory templates. Instead of writing a separate program for each file, it uses <b>metadata workbooks</b>: Excel files that list every import and describe it.</p>
+  <p>Think of a metadata workbook as an instruction book. For each table, one line answers four questions:</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Question</th><th>Answered by</th></tr></thead>
+    <tbody>
+      <tr><td><b>What table do we need?</b></td><td>The table name, for example <code>PRM_EQUITY_SHOCK</code></td></tr>
+      <tr><td><b>How is it read?</b></td><td>From an Excel worksheet, or by a program that extracts it</td></tr>
+      <tr><td><b>Where is the source?</b></td><td>A file location with blanks that the run fills in (date, context, configuration)</td></tr>
+      <tr><td><b>Where does the result go?</b></td><td>An output area, for example parameters or data quality references</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px">Next to that list, each table has its own sheet describing the columns it should have: its <b>schema</b>. The schema is the template the imported data is fitted into.</p>
+  <div class="oneliner"><b>In one line:</b> adding or changing an import means editing the workbook, not the code.</div>
+</section>
+
+<section id="b-steps">
+  <h2>The four steps of an import</h2>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">1</div></div><div class="body"><h3>Read the instructions</h3><p>The process opens the metadata workbook and reads the control sheet, <code>List_Of_Tables</code>: one line per import.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">2</div></div><div class="body"><h3>Find the source</h3><p>It fills the blanks in each file location with the values chosen in the form at the start of the run, such as the reporting date and configuration, then opens the named worksheet or calls the named program.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">3</div></div><div class="body"><h3>Fit the data to the template</h3><p>It uses the table's schema sheet to keep the expected columns, rename them where asked and give each the right type: text, date or number.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">4</div></div><div class="body"><h3>Save the result</h3><p>It saves the finished table in the output area named on the line, ready for the later stages of the Risk Engine.</p></div></div>
+  </div>
+</section>
+
+<section id="b-anim">
+  <h2>Watch an import run</h2>
+  <p>This follows one real line from the configuration workbook, the interest rate curves, from the choices in the form to the saved table. It plays by itself when it comes into view; use <b>Pause</b>, <b>Back</b> or <b>Next</b> to go at your own pace.</p>
+  <div class="flow-anim" data-anim="import" aria-label="Animated walk-through of one import"></div>
+  <p class="note">The table, file, worksheet and columns are real entries from the metadata workbook. The run values (environment, configuration, folder) are examples.</p>
+</section>
+
+<section id="b-three">
+  <h2>Three workbooks, one idea</h2>
+  <p>The same idea is used for three kinds of input.</p>
+  <div class="boxes">
+    <div class="box"><span class="code-big">11</span><span class="what">Configuration</span><p>Parameters and references the team maintains: correlation matrices, shock parameters, mapping and data quality tables.</p><div class="meter">104 tables from 8 Excel files</div></div>
+    <div class="box"><span class="code-big">12</span><span class="what">Sources</span><p>Data delivered each quarter: cash flows, technical provisions, AFR elements, durations, plus the asset extracts from the database.</p><div class="meter">35 tables: 20 from Excel, 15 by a program</div></div>
+    <div class="box"><span class="code-big">14</span><span class="what">QRT templates</span><p>The regulatory reporting templates (QRTs), read block by block from fixed cell ranges in each template file.</p><div class="meter">108 table templates, 21 list templates</div></div>
+  </div>
+  <div class="tbl" style="margin-top:20px"><table>
+    <thead><tr><th>Output area</th><th>What it holds</th><th>Tables</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">REF_DQ</td><td>Reference lists used to check data quality and to fill QRT columns</td><td>60</td></tr>
+      <tr><td class="mono">REF_PRM</td><td>Parameters: shocks, curves, balance sheet structure, metric settings</td><td>37</td></tr>
+      <tr><td class="mono">REF_CORR</td><td>Correlation matrices used to combine the risks</td><td>7</td></tr>
+      <tr><td class="mono">CTX_SOU</td><td>Source data for the run's context</td><td>33</td></tr>
+      <tr><td class="mono">CTX_PROP</td><td>Source data for the actuarial model (Prophet)</td><td>2</td></tr>
+      <tr><td class="mono">QRT_IN / QRT_OUT</td><td>QRT input and output templates</td><td>&mdash;</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="b-example">
+  <h2>A real example: one file, two tables</h2>
+  <p>The file <code>SII_SOURCES.xlsx</code> has two worksheets with counterparty risk figures. To import both, the source workbook has two lines, one per worksheet, and two schema sheets.</p>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Line 1</th><th>Line 2</th></tr></thead>
+    <tbody>
+      <tr><td><b>Table name</b></td><td><code>SCR_COUNTERPARTY_TYPE1</code></td><td><code>SCR_COUNTERPARTY_TYPE2</code></td></tr>
+      <tr><td><b>Read from</b></td><td>SII_SOURCES.xlsx, sheet SCR_COUNTERPARTY_TYPE1</td><td>SII_SOURCES.xlsx, sheet SCR_COUNTERPARTY_TYPE2</td></tr>
+      <tr><td><b>Saved in</b></td><td>Sources (CTX_SOU)</td><td>Sources (CTX_SOU)</td></tr>
+      <tr><td><b>Columns</b></td><td>Reporting date, entity, amount</td><td>Defined by its own schema sheet</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose" style="margin-top:16px">The file location is written once with blanks, and the run fills them in:</p>
+  <div class="example">
+    <div><span>Written as</span>{thisrun_period_path_input}/contexts/{thisrun_context_id}/01_sources/01_raw_files/COMMON/SII_SOURCES.xlsx</div>
+    <div><span>Run values</span>period folder risk_engine/test/20260930, context DEMO</div>
+    <div><span>Becomes</span>risk_engine/test/20260930/contexts/DEMO/01_sources/01_raw_files/COMMON/SII_SOURCES.xlsx</div>
+  </div>
+  <div class="warn"><b>The key rule:</b> only the worksheet named on a line is read. Another worksheet in the same file is ignored until someone adds a line and a schema sheet for it. Two lines never merge into one table.</div>
+  <p class="note">The run values are examples.</p>
+</section>
+
+<section id="b-add">
+  <h2>Adding a new file, in three steps</h2>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">1</div></div><div class="body"><h3>Add a line to the control sheet</h3><p>Give the table a clear, unique name, choose its output area and say which worksheet (or program) to read.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">2</div></div><div class="body"><h3>Add its schema sheet</h3><p>Create a sheet named exactly like the table and list the columns it should have, with their types.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">3</div></div><div class="body"><h3>Run it</h3><p>Put the file in its folder and start the run with the usual parameters. The new table is created with the others.</p></div></div>
+  </div>
+  <p class="crosslink">Step-by-step detail for maintainers: <a href="#t-checklist">adding a file</a>.</p>
+</section>
+
+<section id="b-glossary">
+  <h2>Glossary</h2>
+  <label for="gq" style="display:block;color:var(--muted)">Search a term</label>
+  <input id="gq" class="gsearch" type="search" placeholder="e.g. schema, placeholder, QRT" autocomplete="off">
+  <dl class="gloss" id="gl">
+    <dt>Metadata</dt><dd>Information that describes other data, here the instructions for each import.</dd>
+    <dt>Metadata workbook</dt><dd>The Excel file holding the control sheet and one schema sheet per table.</dd>
+    <dt>Control sheet</dt><dd>The <code>List_Of_Tables</code> sheet: one line per import.</dd>
+    <dt>Schema</dt><dd>The template of a table: its column names, their order and their types.</dd>
+    <dt>Run parameters</dt><dd>The values chosen in the form at the start of a run, plus values derived from them, such as the period folder.</dd>
+    <dt>Placeholder</dt><dd>A name in braces in a file location, such as {thisrun_context_id}, replaced by the run's value.</dd>
+    <dt>Output area (library)</dt><dd>The labelled place a table is saved to, such as REF_PRM or CTX_SOU.</dd>
+    <dt>Function-based import</dt><dd>An import where a program extracts the data, instead of reading an Excel worksheet.</dd>
+    <dt>QRT</dt><dd>Quantitative Reporting Template: the standard Solvency II reports an insurer files with the regulator.</dd>
+    <dt>Cell range</dt><dd>A block of cells such as A10:F13, used to read one table out of a QRT template.</dd>
+    <dt>Parquet</dt><dd>The file format the tables are saved in, built for fast data processing.</dd>
+    <dt>Null</dt><dd>No value at all, which is different from zero or an empty text.</dd>
+    <dt>Overwrite</dt><dd>Saving a table replaces the previous one of the same name.</dd>
+  </dl>
+  <p class="empty" id="ge" hidden>No term matches that search.</p>
+  <p class="crosslink">Interested in the settings? <button type="button" data-go="technical">Open the maintainer guide.</button></p>
+</section>
+</main>
+</div></div>
+
+<!-- ===================== MAINTAINER GUIDE ===================== -->
+<div class="gut" role="tabpanel" id="technical" aria-labelledby="tab-technical" hidden><div class="inner panelwrap">
+<nav class="index" aria-label="Maintainer contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#t-compare">The three workbooks</a></li>
+    <li><a href="#t-params">From prompts to paths</a></li>
+    <li><a href="#t-schema">Schema sheets</a></li>
+    <li><a href="#t-run">What a run does</a></li>
+    <li><a href="#t-function">Function-based imports</a></li>
+    <li><a href="#t-qrt">QRT workbook</a></li>
+    <li><a href="#t-checklist">Adding a file</a></li>
+  </ol>
+</nav>
+<main>
+<section id="t-compare">
+  <h2>The three workbooks side by side</h2>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th>Configuration</th><th>Source</th><th>QRT</th></tr></thead>
+    <tbody>
+      <tr><td><b>Workbook</b></td><td class="mono">11_Metadata_Import_Configuration_Files.xlsx</td><td class="mono">12_Metadata_Import_Source_Files.xlsx</td><td class="mono">14_Metadata_Import_QRT_Files.xlsx</td></tr>
+      <tr><td><b>Control sheet</b></td><td><code>List_Of_Tables</code>, 104 rows</td><td><code>List_Of_Tables</code>, 35 rows</td><td><code>RANGES</code> (1,024 rows) and <code>LISTS</code> (50 rows), plus <code>PARAMETERS</code></td></tr>
+      <tr><td><b>Methods</b></td><td><code>EXCEL</code> (all 104)</td><td><code>EXCEL</code> 20, <code>FUNCTION</code> 15</td><td>Cell ranges per template</td></tr>
+      <tr><td><b>Output areas</b></td><td><code>REF_DQ</code> 60, <code>REF_PRM</code> 37, <code>REF_CORR</code> 7</td><td><code>CTX_SOU</code> 33, <code>CTX_PROP</code> 2</td><td><code>QRT_IN</code>, <code>QRT_OUT</code></td></tr>
+      <tr><td><b>Source folder</b></td><td class="mono">configuration/{thisrun_config_id}/01_raw_files/</td><td class="mono">contexts/{thisrun_context_id}/01_sources/ and 02_prophet_sources/</td><td class="mono">contexts/{thisrun_context_id}/03_qrt_sources/</td></tr>
+      <tr><td><b>Schema sheets</b></td><td>One per table (104), same 7 columns</td><td>One per Excel table and 2 function tables (22), same 7 columns</td><td>None: headers come from <code>RANGE_COLUMN_LABEL</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="t-params">
+  <h2>From prompts to paths</h2>
+  <p>The values that fill the placeholders come from the prompt form (ipywidgets) at the start of the run. Submitted values are collected in <code>run_parameters</code>, together with values derived from them, and each <code>{name}</code> in a path is replaced by the entry with the same key.</p>
+  <div class="chain">
+    <div class="node"><b>Prompt form</b><small>ipywidgets dropdowns and date picker</small><span class="v">PYSPARKPrompts</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>prompts.values</b><small>submitted choices</small><span class="v">THISRUN_* keys</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>run_parameters</b><small>choices + derived values</small><span class="v">thisrun_* keys</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>Resolved path</b><small>every {key} replaced</small><span class="v">source file</span></div>
+  </div>
+  <div class="tbl" style="margin-top:20px"><table>
+    <thead><tr><th>Placeholder</th><th>Comes from</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">{thisrun_config_id}</td><td>Prompt <code>THISRUN_CONFIG_ID</code></td></tr>
+      <tr><td class="mono">{thisrun_context_id}</td><td>Prompt <code>THISRUN_CONTEXT_ID</code></td></tr>
+      <tr><td class="mono">{thisrun_entity_id}</td><td>Prompt <code>THISRUN_ENTITY_ID</code></td></tr>
+      <tr><td class="mono">{thisrun_reporting_date_num}, _yyyyqq, _yyqq, _qq, _qq_yyyy, _qrt</td><td>Derived from <code>THISRUN_REPORTING_DATE_RAW</code>, one format per file-naming convention</td></tr>
+      <tr><td class="mono">{thisrun_period_path_input}, {thisrun_in_root_path}</td><td>Derived from environment and reporting date</td></tr>
+      <tr><td class="mono">{thisrun_entity_id_qrt}</td><td>QRT workbook <code>PARAMETERS</code> sheet (<code>Belins</code> for BELINS)</td></tr>
+    </tbody>
+  </table></div>
+<pre><span class="c"># illustrative outline; the real logic lives in all_functions</span>
+run_parameters = {
+    <span class="k">"thisrun_config_id"</span>:         prompts.values[<span class="k">"THISRUN_CONFIG_ID"</span>],
+    <span class="k">"thisrun_context_id"</span>:        prompts.values[<span class="k">"THISRUN_CONTEXT_ID"</span>],
+    <span class="k">"thisrun_period_path_input"</span>: period_path_input,      <span class="c"># derived</span>
+    <span class="k">"thisrun_reporting_date_num"</span>: reporting_date_num,    <span class="c"># derived</span>
+}
+<span class="k">for</span> key, value <span class="k">in</span> run_parameters.items():
+    path = path.replace(<span class="k">"{"</span> + key + <span class="k">"}"</span>, str(value))</pre>
+  <p class="crosslink">See it step by step: <a href="#b-anim">the import animation</a>.</p>
+</section>
+
+<section id="t-schema">
+  <h2>Schema sheets</h2>
+  <p>Each table has a schema sheet named exactly like its <code>TABLE_NAME</code>. One row per output column. The reader uses two of its columns: <code>Column_Name</code> and <code>Column_Type</code>.</p>
+  <h3 style="margin-top:20px">Example: <code>INTEREST_RATES_CURVES</code></h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Column_Name</th><th>Column_Type</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">MATURITY</td><td>Amount</td></tr>
+      <tr><td class="mono">CURVE_ID</td><td>Character</td></tr>
+      <tr><td class="mono">RATE</td><td>Percentage</td></tr>
+    </tbody>
+  </table></div>
+  <h3 style="margin-top:20px">Type labels</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Column_Type</th><th>Spark type</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Character</td><td class="mono">StringType</td></tr>
+      <tr><td class="mono">Date</td><td class="mono">DateType</td></tr>
+      <tr><td class="mono">Amount</td><td class="mono">DoubleType</td></tr>
+      <tr><td class="mono">Percentage</td><td class="mono">DoubleType</td></tr>
+      <tr><td class="mono">Numeric</td><td class="mono">DoubleType</td></tr>
+      <tr><td class="mono">Integer</td><td class="mono">IntegerType</td></tr>
+    </tbody>
+  </table></div>
+  <h3 style="margin-top:20px">How <code>import_structured_xlsx</code> reads the sheet</h3>
+  <ul class="prose">
+    <li>Reads the worksheet with the Excel connector; if that fails, copies the file to <code>/tmp</code> and reads it with pandas, finding the sheet name case-insensitively.</li>
+    <li>Removes rows where every value is empty.</li>
+    <li>Matches columns <b>by name</b>: columns in both file and schema are kept and cast to their type; schema columns missing from the file become null.</li>
+    <li>Upper-cases all column names.</li>
+  </ul>
+</section>
+
+<section id="t-run">
+  <h2>What a configuration import run does</h2>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">1</div></div><div class="body"><h3>Read the control sheet</h3><p>Reads <code>List_Of_Tables</code> with the Excel connector in the <code>ref</code> layer, from a metadata folder built from the environment and reporting date.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">2</div></div><div class="body"><h3>Keep the Excel rows</h3><p>Filters on <code>IMPORT_FILE_IMPORT_METHOD = EXCEL</code>, collects the rows and processes them one at a time (sequential, not parallel).</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">3</div></div><div class="body"><h3>Resolve the source</h3><p>Fills the placeholders in <code>TABLE_SOURCE_PATH</code> from <code>run_parameters</code> and takes the worksheet from <code>IMPORT_FILE_EXCEL_SHEET</code>.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">4</div></div><div class="body"><h3>Import and structure</h3><p>Calls <code>import_structured_xlsx</code> with the metadata workbook location, target name, source file and worksheet.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">5</div></div><div class="body"><h3>Route to the output folder</h3><p>Maps <code>TABLE_LIBRARY</code> to a folder and appends <code>TABLE_NAME.parquet</code>.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">6</div></div><div class="body"><h3>Save with overwrite</h3><p>Writes Parquet in overwrite mode. A Spark Parquet destination is a folder of data files, even though its name ends in <code>.parquet</code>.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">7</div></div><div class="body"><h3>Report and continue</h3><p>Prints timings and a row count, then moves to the next row. At the end it prints the total loop time.</p></div></div>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>TABLE_LIBRARY</th><th>Output location</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">REF_CORR</td><td class="mono">thisrun_period_path_output_corr / TABLE_NAME.parquet</td></tr>
+      <tr><td class="mono">REF_PRM</td><td class="mono">thisrun_period_path_output_prm / TABLE_NAME.parquet</td></tr>
+      <tr><td class="mono">REF_DQ</td><td class="mono">thisrun_period_path_output_dq / TABLE_NAME.parquet</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="t-function">
+  <h2>Function-based imports</h2>
+  <p>In the source workbook, 15 rows use <code>FUNCTION</code>: a program extracts or reshapes the data instead of a plain worksheet read. Only two of them have a schema sheet; for the others the function defines the structure.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Table</th><th>Function</th><th>Source file</th><th>Schema sheet</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">ASSETS</td><td class="mono">fct_extract_asset_from_historized_DB</td><td>database</td><td>no</td></tr>
+      <tr><td class="mono">ASSETS_AND_LIABILITIES</td><td class="mono">fct_extract_assets_and_liabilities</td><td>database</td><td>no</td></tr>
+      <tr><td class="mono">ASSETS_FOR_BS</td><td class="mono">fct_extract_assets</td><td>database</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_LIFE_BELINS</td><td class="mono">fct_import_cashflows_life</td><td class="mono">{…yyyyqq}_Extract_LiabCFByPool.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_LIFE_REN_BELINS</td><td class="mono">fct_import_cashflows_life</td><td class="mono">{…yyyyqq}_Extract_LiabCFByPool_Renewal.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_MORTGAGES</td><td class="mono">fct_import_cashflows_mortgages</td><td class="mono">PH CF_input_{…yyqq}.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_MORTGAGES_YR1</td><td class="mono">fct_import_cashflows_mortgages_Y1</td><td class="mono">PH CF_input_{…yyqq}.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_NONLIFE_BELINS</td><td class="mono">fct_import_cashflows_nonlife_belins</td><td class="mono">Resume_{…qq}_BL.xlsm</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_NONLIFE_CORONA</td><td class="mono">fct_import_cashflows_nonlife_corona</td><td class="mono">C_Resume_{…qq}_BL.xlsm</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_NONLIFE_ALL</td><td><i>none</i></td><td><i>none</i></td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_BONDS_BELINS</td><td class="mono">fct_import_cashflows_bonds</td><td class="mono">{…yyyyqq}_Bonds_CashFlows_Belins.xlsm</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_POLICY_LOANS</td><td class="mono">fct_import_policy_loans</td><td class="mono">Valuation VOP {…yyyyqq}.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">CASHFLOWS_POLICY_LOANS_YR1</td><td class="mono">fct_import_policy_loans_yr1</td><td class="mono">Valuation VOP {…yyyyqq}.xlsx</td><td>no</td></tr>
+      <tr><td class="mono">INPUTS_BALANCE_SHEET</td><td class="mono">fct_import_balance_sheet</td><td class="mono">Input_BalanceSheet_{…num}.xlsx</td><td>yes</td></tr>
+      <tr><td class="mono">MANUAL_CORRECTION_BS</td><td class="mono">fct_import_manual_correction_BS</td><td class="mono">MANUAL_CORRECTION_BS_{…num}.xlsx</td><td>yes</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><code>TABLE_SOURCE_PROGRAM</code> still points to the original SAS programs in <code>programs/12_import_sources/</code>. All function tables go to <code>CTX_SOU</code>.</p>
+</section>
+
+<section id="t-qrt">
+  <h2>QRT workbook</h2>
+  <p><code>14_Metadata_Import_QRT_Files.xlsx</code> does not use <code>List_Of_Tables</code>. QRT templates have a fixed layout, so each block of a template is read from a cell range, and its column headers from a second range.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Sheet</th><th>Columns</th><th>Content</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">PARAMETERS</td><td class="mono">PARAMETER_ENTITY, PARAMETER_IMPORT_TYPE, PARAMETER_NAME, PARAMETER_VALUE</td><td>Per entity and import type: library <code>QRT_IN</code> for <code>QRT_INPUT</code>, <code>QRT_OUT</code> for <code>QRT_OUTPUT</code>, and <code>THISRUN_ENTITY_ID_QRT = Belins</code></td></tr>
+      <tr><td class="mono">RANGES</td><td class="mono">QRT_SET, QRT_SOURCE, QRT_PATH, QRT_ID, RANGE_ID, RANGE_COLUMN_LABEL</td><td>1,024 blocks across 108 templates. <code>RANGE_ID</code> holds the data, <code>RANGE_COLUMN_LABEL</code> the headers</td></tr>
+      <tr><td class="mono">LISTS</td><td class="mono">QRT_SET, QRT_SOURCE, QRT_PATH, QRT_ID, LINK_BETWEEN_TABLES</td><td>50 list-type templates (21 distinct), such as S.06.02. <code>LINK_BETWEEN_TABLES</code> joins their two parts, e.g. <code>C0041=C0042</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="example">
+    <div><span>QRT_SET</span>Quarterly</div>
+    <div><span>QRT_SOURCE</span>QRT_INPUT</div>
+    <div><span>QRT_PATH</span>contexts/{thisrun_context_id}/03_qrt_sources/01_raw_files/qrt_input/{thisrun_entity_id}/E.04.01.a.xlsx</div>
+    <div><span>QRT_ID</span>E0401</div>
+    <div><span>RANGE_ID</span>A10:F13 (data)</div>
+    <div><span>RANGE_COLUMN_LABEL</span>C8:F10 (headers)</div>
+  </div>
+  <div class="tbl" style="margin-top:16px"><table>
+    <thead><tr><th>QRT_SET</th><th>QRT_SOURCE values</th><th>RANGES rows</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Annual</td><td class="mono">QRT_INPUT, QRT_OUTPUT</td><td>964</td></tr>
+      <tr><td class="mono">Quarterly</td><td class="mono">QRT_INPUT, QRT_OUTPUT, QRT_OUTPUT_2024Q1</td><td>58</td></tr>
+      <tr><td class="mono">Annual_NOK</td><td class="mono">QRT_INPUT, QRT_OUTPUT</td><td>2</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The prompts <code>THISRUN_QRT_IMPORT_SET</code> and <code>THISRUN_QRT_IMPORT_TYPE</code> select the rows by <code>QRT_SET</code> and <code>QRT_SOURCE</code>.</p>
+</section>
+
+<section id="t-checklist">
+  <h2>Adding a file</h2>
+  <div class="panel"><ul>
+    <li>Add a row to <code>List_Of_Tables</code> with a unique <code>TABLE_NAME</code> and its <code>TABLE_LIBRARY</code></li>
+    <li>Set <code>IMPORT_FILE_IMPORT_METHOD</code> and the worksheet (<code>IMPORT_FILE_EXCEL_SHEET</code>) or the function</li>
+    <li>Write <code>TABLE_SOURCE_PATH</code> with run-parameter placeholders in braces</li>
+    <li>Add a schema sheet named exactly like the table, with <code>Column_Name</code> and <code>Column_Type</code></li>
+  </ul></div>
+  <p class="crosslink">Plain-language version: <button type="button" data-go="business">Open "How it works".</button></p>
+</section>
+
+</main>
+</div></div>
+
+<footer class="ver gut" id="page-version" data-version="4" data-saved="2026-11-06T14:00"><div class="inner">
+  <p class="ver-now">Version <span id="ver-num">4</span> &middot; saved <span id="ver-date">6 November 2026, 14:00</span></p>
+  <details class="ver-log"><summary>Version history</summary>
+    <ol id="ver-log" reversed>
+      <li><b>Version 4</b> &middot; 6 November 2026, 14:00 &middot; Simplified: removed control sheet columns, placeholders, inventory, health check, troubleshooting and open points; schema section follows the import code</li>
+      <li><b>Version 3</b> &middot; 6 November 2026, 12:00 &middot; The import animation plays by itself and shows values moving into the path</li>
+      <li><b>Version 2</b> &middot; 6 November 2026, 11:50 &middot; Checked against the three metadata workbooks; added the QRT workbook, inventory, health check and the import animation</li>
+      <li><b>Version 1</b> &middot; 6 November 2026, 11:40 &middot; Merged the configuration and source import guides</li>
+    </ol>
+  </details>
+</div></footer>
+
+
+<script data-page="tabs">
+(function(){
+  var tabs={business:document.getElementById('tab-business'),technical:document.getElementById('tab-technical')};
+  var panels={business:document.getElementById('business'),technical:document.getElementById('technical')};
+  var sectionTab=function(id){var el=document.getElementById(id);if(!el)return null;var p=el.closest('[role="tabpanel"]');return p?p.id:null;};
+  function show(name,focus){
+    Object.keys(tabs).forEach(function(k){
+      var on=k===name;
+      tabs[k].setAttribute('aria-selected',on?'true':'false');
+      tabs[k].tabIndex=on?0:-1;
+      panels[k].hidden=!on;
+    });
+    if(focus)tabs[name].focus();
+  }
+  function route(){
+    var h=(location.hash||'').slice(1);
+    if(h==='business'||h==='technical'){show(h);window.scrollTo(0,0);return;}
+    var t=h?sectionTab(h):null;
+    if(t){show(t);var el=document.getElementById(h);if(el)el.scrollIntoView();}
+    else show('business');
+  }
+  Object.keys(tabs).forEach(function(k){
+    tabs[k].addEventListener('click',function(){
+      if(location.hash!=='#'+k){location.hash=k;}else{show(k);}
+    });
+    tabs[k].addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+        var n=k==='business'?'technical':'business';
+        location.hash=n; show(n,true); e.preventDefault();
+      }
+    });
+  });
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-go]');
+    if(b&&!document.documentElement.classList.contains('editing'))location.hash=b.getAttribute('data-go');
+  });
+  window.addEventListener('hashchange',route);
+  window.__showTab=show;
+  route();
+
+  document.addEventListener('input',function(e){
+    if(!e.target||e.target.id!=='gq')return;
+    var t=e.target.value.trim().toLowerCase(),n=0;
+    var dl=document.getElementById('gl'),empty=document.getElementById('ge');
+    [].slice.call(dl.querySelectorAll('dt')).forEach(function(dt){
+      var dd=dt.nextElementSibling;
+      var hit=!t||(dt.textContent+' '+(dd?dd.textContent:'')).toLowerCase().indexOf(t)>-1;
+      dt.hidden=!hit;if(dd)dd.hidden=!hit;if(hit)n++;
+    });
+    empty.hidden=n>0;
+  });
+})();
+</script>
+
+<style data-page="editor">
+.ed-bar{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);font-size:14px}
+.ed-bar button{appearance:none;font:inherit;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:7px 12px;cursor:pointer;white-space:nowrap}
+.ed-bar button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.ed-bar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ed-bar button:disabled{opacity:.45;cursor:not-allowed}
+.ed-bar button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.ed-bar button.primary:hover{color:var(--surface);opacity:.9}
+.ed-bar button.danger{color:var(--amber);border-color:var(--amber)}
+.ver{border-top:1px solid var(--line);padding-block:20px 96px;color:var(--muted);font-size:13px}
+.ver p{margin:0}
+.ver-log{margin-top:8px}
+.ver-log summary{cursor:pointer;color:var(--accent)}
+.ver-log ol{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
+.ver-log b{color:var(--ink);font-weight:600}
+.ver-note{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+.ver-note input{flex:1 1 220px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.ver-note input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ver-note label{font-size:12px;color:var(--muted);width:100%}
+.img-box{display:grid;gap:8px;width:min(460px,100%)}
+.img-box .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.img-box label{font-size:12px;color:var(--muted)}
+.img-box input[type=text]{flex:1 1 200px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.img-box input[type=file]{font:inherit;font-size:13px;max-width:100%;color:var(--ink)}
+.img-box .or{font-size:12px;color:var(--muted);text-align:center}
+.img-box .preview{max-height:120px;max-width:100%;border:1px solid var(--line);border-radius:6px;justify-self:start}
+figure.guide-figure{margin:18px 0 0;max-width:100%}
+figure.guide-figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+figure.guide-figure figcaption{font-size:13px;color:var(--muted);margin-top:6px;max-width:66ch}
+.editing figure.guide-figure img{cursor:pointer}
+.editing figure.ed-img-current img{outline:3px solid var(--accent);outline-offset:2px}
+.ed-bar .ed-status{align-self:center;color:var(--muted);font-size:12px;padding:0 6px}
+.ed-bar .ed-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:6px;vertical-align:middle}
+.ed-help{background:var(--amber-soft);color:var(--ink);border-bottom:1px solid var(--line);font-size:14px;padding-block:8px}
+.ed-help b{color:var(--amber)}
+.ed-draft{background:var(--accent-soft);border-bottom:1px solid var(--line);padding-block:10px;font-size:14px}
+.ed-draft .inner{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ed-draft button{appearance:none;font:inherit;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:6px;padding:5px 10px;cursor:pointer}
+.ed-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:21;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.2)}
+.editing [contenteditable="true"]{outline:none}
+.editing [contenteditable="true"] :is(h1,h2,h3,p,li,td,th,dt,dd,pre,.example,.oneliner,.warn,.note,.panel,.node,.box):hover{box-shadow:inset 0 0 0 1px var(--accent);border-radius:3px}
+.editing [contenteditable="true"] :focus{outline:none}
+.editing section.ed-current{background:var(--accent-soft);border-radius:8px;box-shadow:0 0 0 8px var(--accent-soft)}
+.editing nav.index a{cursor:text}
+@media print{.ed-bar,.ed-help,.ed-draft,.ed-toast{display:none!important}}
+</style>
+
+<script data-page="editor">
+(function(){
+  var root=document.documentElement;
+  var DRAFT_KEY='metadataImportGuide.draft.v1';
+  var dirty=false, editing=false, currentSection=null, currentRow=null, confirmTimer=null;
+
+  function regions(){
+    return [].slice.call(document.querySelectorAll('header.top .inner, #business .panelwrap main, #technical .panelwrap main, #business nav.index ol, #technical nav.index ol'));
+  }
+  function activePanel(){ return document.querySelector('[role="tabpanel"]:not([hidden])'); }
+
+  /* ---------- toolbar ---------- */
+  var bar=document.createElement('div');
+  bar.className='ed-bar'; bar.setAttribute('role','toolbar'); bar.setAttribute('aria-label','Page editing');
+  bar.setAttribute('data-editor-ui','');
+  document.body.appendChild(bar);
+
+  var help=document.createElement('div');
+  help.className='ed-help gut'; help.hidden=true; help.setAttribute('data-editor-ui','');
+  help.innerHTML='<div class="inner"><b>Editing.</b> Click any text and type. Ctrl+B for bold, Ctrl+Z to undo. Click inside a table to add or remove rows. To add a picture, click the paragraph it should follow and use <b>Add image</b>, or paste a screenshot with Ctrl+V. When finished, click <b>Save new version</b>: it downloads a numbered copy and records it in the version history at the bottom.</div>';
+  var tabbar=document.querySelector('.tabbar');
+  tabbar.parentNode.insertBefore(help,tabbar.nextSibling);
+
+  function btn(label,cls,fn,title){
+    var b=document.createElement('button'); b.type='button'; b.textContent=label;
+    if(cls)b.className=cls; if(title)b.title=title;
+    b.addEventListener('mousedown',function(e){e.preventDefault();}); // keep caret where it is
+    b.addEventListener('click',fn); return b;
+  }
+  var status=document.createElement('span'); status.className='ed-status';
+  var bEdit=btn('Edit page','primary',startEdit,'Turn on editing');
+  var bSection=btn('Add section','',addSection,'Add a new section after the highlighted one');
+  var bRemoveSection=btn('Remove section','danger',removeSection,'Remove the highlighted section');
+  var bRow=btn('Add row','',addRow,'Add a row below the one you clicked');
+  var bRemoveRow=btn('Remove row','danger',removeRow,'Remove the row you clicked');
+  var bTerm=btn('Add glossary term','',addTerm,'Add a term to the glossary');
+  var bImage=btn('Add image','',openImageBox,'Insert an image below the paragraph you clicked');
+  var bRemoveImage=btn('Remove image','danger',removeImage,'Remove the image you clicked');
+  var bSave=btn('Save new version','primary',saveCopy,'Download the updated page as a new numbered version');
+  var bDone=btn('Done','',stopEdit,'Stop editing');
+
+  function render(){
+    bar.innerHTML='';
+    status.innerHTML=dirty?'<span class="ed-dot"></span>Unsaved changes':'';
+    if(askingNote){
+      bar.appendChild(noteBox);
+    }else if(askingImg){
+      bar.appendChild(imgBox);
+    }else if(!editing){
+      if(dirty){bar.appendChild(status);bar.appendChild(bSave);}
+      bar.appendChild(bEdit);
+    }else{
+      [status,bSection,bRemoveSection,bRow,bRemoveRow,bTerm,bImage].forEach(function(b){bar.appendChild(b);});
+      if(currentImg)bar.appendChild(bRemoveImage);
+      [bSave,bDone].forEach(function(b){bar.appendChild(b);});
+      bRemoveSection.disabled=!currentSection;
+      bRow.disabled=!currentRow;
+      bRemoveRow.disabled=!currentRow||currentRow.parentNode.rows.length<2;
+    }
+    resetConfirm();
+  }
+
+  function resetConfirm(){
+    clearTimeout(confirmTimer);
+    bRemoveSection.textContent='Remove section'; bRemoveSection.dataset.armed='';
+  }
+
+  function toast(msg){
+    var t=document.createElement('div'); t.className='ed-toast'; t.setAttribute('role','status');
+    t.setAttribute('data-editor-ui',''); t.textContent=msg; document.body.appendChild(t);
+    setTimeout(function(){t.remove();},5000);
+  }
+
+  /* ---------- edit mode ---------- */
+  function startEdit(){
+    editing=true; root.classList.add('editing'); help.hidden=false;
+    regions().forEach(function(r){r.setAttribute('contenteditable','true');r.setAttribute('spellcheck','true');});
+    var gq=document.getElementById('gq'); if(gq){gq.value='';gq.dispatchEvent(new Event('input',{bubbles:true}));}
+    render();
+  }
+  function stopEdit(){
+    editing=false; root.classList.remove('editing'); help.hidden=true;
+    regions().forEach(function(r){r.removeAttribute('contenteditable');r.removeAttribute('spellcheck');});
+    setCurrent(null,null); render();
+  }
+
+  function setCurrent(sec,row){
+    if(currentSection&&currentSection!==sec)currentSection.classList.remove('ed-current');
+    currentSection=sec; currentRow=row;
+    if(sec)sec.classList.add('ed-current');
+    if(editing)render();
+  }
+  function trackCaret(){
+    if(!editing)return;
+    var s=window.getSelection(); if(!s||!s.rangeCount)return;
+    var n=s.anchorNode; if(n&&n.nodeType===3)n=n.parentNode;
+    if(!n||!n.closest)return;
+    if(!n.closest('[contenteditable="true"]'))return;
+    var sec=n.closest('main section'); var tr=n.closest('tbody tr');
+    if(sec){var blk=n; while(blk&&blk.parentNode!==sec)blk=blk.parentNode; lastBlock=blk||null;}
+    setCurrent(sec,tr);
+  }
+  document.addEventListener('selectionchange',trackCaret);
+
+  /* links inside editable areas should not navigate while editing */
+  document.addEventListener('click',function(e){
+    if(!editing)return;
+    var a=e.target.closest&&e.target.closest('[contenteditable="true"] a');
+    if(a){e.preventDefault();}
+  },true);
+
+  /* clicking an image selects it, so it can be removed */
+  document.addEventListener('click',function(e){
+    if(!editing||askingImg||(e.target.closest&&e.target.closest('.ed-bar')))return;
+    var fig=e.target.closest&&e.target.closest('[contenteditable="true"] figure.guide-figure');
+    var onImg=fig&&e.target.tagName==='IMG';
+    if(currentImg&&currentImg!==fig)currentImg.classList.remove('ed-img-current');
+    currentImg=onImg?fig:null;
+    if(currentImg){currentImg.classList.add('ed-img-current');var sec=fig.closest('main section');if(sec){var blk=fig;while(blk&&blk.parentNode!==sec)blk=blk.parentNode;lastBlock=blk;setCurrent(sec,null);return;}}
+    render();
+  });
+
+  /* paste as plain text, so Word/Excel formatting does not break the page;
+     a pasted screenshot or image file is inserted as an image */
+  document.addEventListener('paste',function(e){
+    if(!editing||!e.target.closest||!e.target.closest('[contenteditable="true"]'))return;
+    var cd=e.clipboardData||window.clipboardData;
+    var imgFile=cd&&cd.files&&[].slice.call(cd.files).filter(function(f){return /^image\//.test(f.type);})[0];
+    if(imgFile){e.preventDefault(); fileToSrc(imgFile).then(function(src){insertFigure(src,'',imgFile.name&&imgFile.name!=='image.png'?imgFile.name:'Pasted image');}).catch(function(){toast('That image could not be read. Try saving it as PNG or JPG first.');}); return;}
+    var text=(e.clipboardData||window.clipboardData).getData('text/plain');
+    if(text==null)return;
+    e.preventDefault();
+    if(!document.execCommand('insertText',false,text)){
+      var s=window.getSelection(); if(!s.rangeCount)return;
+      var r=s.getRangeAt(0); r.deleteContents(); r.insertNode(document.createTextNode(text)); r.collapse(false);
+    }
+  });
+
+  /* keep the contents list in sync with headings of sections added here */
+  document.addEventListener('input',function(e){
+    if(!editing||!e.target.closest||e.target.id==='gq')return;
+    if(e.target.closest('[contenteditable="true"]')){markDirty();}
+    var sec=currentSection; if(!sec)return;
+    var link=document.querySelector('nav.index a[data-sync][href="#'+sec.id+'"]');
+    var h=sec.querySelector('h2'); if(link&&h)link.textContent=h.textContent.trim()||'Untitled section';
+  });
+
+  function markDirty(){
+    if(!dirty){dirty=true;render();}
+    clearTimeout(markDirty.t); markDirty.t=setTimeout(saveDraft,800);
+  }
+
+  /* ---------- actions ---------- */
+  function addSection(){
+    var panel=activePanel(); var main=panel.querySelector('main'); var nav=panel.querySelector('nav.index ol');
+    var id='s-'+Date.now().toString(36);
+    var sec=document.createElement('section'); sec.id=id;
+    sec.innerHTML='<h2>New section</h2><p>Write the explanation here.</p>';
+    var after=currentSection&&main.contains(currentSection)?currentSection:null;
+    var glossary=main.querySelector('#b-glossary');
+    if(after&&after.id!=='b-glossary'){after.after(sec);} else if(glossary){main.insertBefore(sec,glossary);} else {main.appendChild(sec);}
+    var li=document.createElement('li'); li.innerHTML='<a href="#'+id+'" data-sync="1">New section</a>';
+    var afterLink=after?nav.querySelector('a[href="#'+after.id+'"]'):null;
+    var glossLink=nav.querySelector('a[href="#b-glossary"]');
+    if(afterLink&&after.id!=='b-glossary'){afterLink.parentNode.after(li);} else if(glossLink){nav.insertBefore(li,glossLink.parentNode);} else {nav.appendChild(li);}
+    sec.scrollIntoView({block:'center'});
+    selectContents(sec.querySelector('h2')); setCurrent(sec,null); markDirty();
+    toast('Section added. Type its heading, then its text.');
+  }
+
+  function removeSection(){
+    if(!currentSection)return;
+    if(bRemoveSection.dataset.armed!=='1'){
+      bRemoveSection.dataset.armed='1'; bRemoveSection.textContent='Click again to remove';
+      clearTimeout(confirmTimer); confirmTimer=setTimeout(resetConfirm,4000); return;
+    }
+    var sec=currentSection; var link=document.querySelector('nav.index a[href="#'+sec.id+'"]');
+    if(link)link.parentNode.remove();
+    sec.remove(); setCurrent(null,null); markDirty(); toast('Section removed. Ctrl+Z will not bring it back; close without saving to undo.');
+  }
+
+  function addRow(){
+    if(!currentRow)return;
+    var copy=currentRow.cloneNode(true);
+    [].slice.call(copy.cells).forEach(function(c){c.textContent='';});
+    copy.cells[0].textContent='New';
+    currentRow.after(copy); selectContents(copy.cells[0]); markDirty();
+  }
+  function removeRow(){
+    if(!currentRow||currentRow.parentNode.rows.length<2)return;
+    var next=currentRow.nextElementSibling||currentRow.previousElementSibling;
+    currentRow.remove(); currentRow=null;
+    if(next&&next.cells[0])selectContents(next.cells[0]);
+    markDirty(); render();
+  }
+
+  function addTerm(){
+    window.__showTab&&window.__showTab('business');
+    var dl=document.getElementById('gl');
+    var dt=document.createElement('dt'); dt.textContent='New term';
+    var dd=document.createElement('dd'); dd.textContent='What it means, in plain words.';
+    dl.appendChild(dt); dl.appendChild(dd);
+    dt.scrollIntoView({block:'center'}); selectContents(dt); markDirty();
+  }
+
+  function selectContents(el){
+    if(!el)return;
+    var r=document.createRange(); r.selectNodeContents(el);
+    var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    var host=el.closest('[contenteditable="true"]'); if(host)host.focus({preventScroll:true});
+  }
+
+  /* ---------- save a copy of the whole page ---------- */
+  function buildHtml(hook){
+    var clone=root.cloneNode(true);
+    if(hook)hook(clone);
+    clone.classList.remove('editing'); if(!clone.className)clone.removeAttribute('class');
+    clone.removeAttribute('data-theme');
+    [].slice.call(clone.querySelectorAll('[data-editor-ui]')).forEach(function(n){n.remove();});
+    [].slice.call(clone.querySelectorAll('[contenteditable]')).forEach(function(n){n.removeAttribute('contenteditable');n.removeAttribute('spellcheck');});
+    [].slice.call(clone.querySelectorAll('.ed-current,.ed-img-current')).forEach(function(n){n.classList.remove('ed-current','ed-img-current');if(!n.className)n.removeAttribute('class');});
+    /* drop anything a viewer injected; keep only this page's own scripts */
+    [].slice.call(clone.querySelectorAll('script')).forEach(function(s){
+      var own=s.hasAttribute('data-page')||/__showTab|tab-business/.test(s.textContent);
+      if(!own)s.remove();
+    });
+    [].slice.call(clone.querySelectorAll('meta[http-equiv]')).forEach(function(m){m.remove();});
+    /* reset view state: business tab open, glossary search cleared */
+    var tb=clone.querySelector('#tab-business'),tt=clone.querySelector('#tab-technical');
+    if(tb){tb.setAttribute('aria-selected','true');tb.removeAttribute('tabindex');}
+    if(tt){tt.setAttribute('aria-selected','false');tt.setAttribute('tabindex','-1');}
+    var pb=clone.querySelector('#business'),pt=clone.querySelector('#technical');
+    if(pb)pb.removeAttribute('hidden'); if(pt)pt.setAttribute('hidden','');
+    [].slice.call(clone.querySelectorAll('#gl dt,#gl dd')).forEach(function(n){n.removeAttribute('hidden');});
+    var ge=clone.querySelector('#ge'); if(ge)ge.setAttribute('hidden','');
+    var gq=clone.querySelector('#gq'); if(gq)gq.removeAttribute('value');
+    return '<!doctype html>\n'+clone.outerHTML;
+  }
+
+  /* ---------- images ---------- */
+  var lastBlock=null, currentImg=null, askingImg=false;
+  var imgBox=document.createElement('div'); imgBox.className='img-box';
+  imgBox.innerHTML=
+    '<label for="img-file">Choose an image from your computer (it is stored inside the page)</label>'+
+    '<input id="img-file" type="file" accept="image/*">'+
+    '<div class="or">or</div>'+
+    '<label for="img-url">Web address or file name next to the page, e.g. images/flow.png</label>'+
+    '<div class="row"><input id="img-url" type="text" placeholder="https://\u2026 or images/flow.png"></div>'+
+    '<img class="preview" alt="" hidden>'+
+    '<label for="img-cap">Caption (optional)</label>'+
+    '<div class="row"><input id="img-cap" type="text" maxlength="200" placeholder="e.g. Data enrichment flow"></div>'+
+    '<div class="row"></div>';
+  var imgFileIn=imgBox.querySelector('#img-file'), imgUrlIn=imgBox.querySelector('#img-url'), imgCapIn=imgBox.querySelector('#img-cap');
+  var imgPrev=imgBox.querySelector('.preview'), imgBtnRow=imgBox.lastElementChild, pendingSrc=null;
+  var bInsertImg=btn('Insert image','primary',insertFromBox,'Insert the image into the page');
+  var bCancelImg=btn('Cancel','',function(){askingImg=false;render();},'Back to editing');
+  imgBtnRow.appendChild(bInsertImg); imgBtnRow.appendChild(bCancelImg);
+  imgFileIn.addEventListener('change',function(){
+    var f=imgFileIn.files&&imgFileIn.files[0]; pendingSrc=null; imgPrev.hidden=true;
+    if(!f)return;
+    if(!/^image\//.test(f.type)){toast('Please choose an image file (PNG, JPG, GIF, SVG or WebP).');imgFileIn.value='';return;}
+    imgUrlIn.value='';
+    fileToSrc(f).then(function(src){pendingSrc=src;imgPrev.src=src;imgPrev.hidden=false;if(!imgCapIn.value)imgCapIn.value='';})
+      .catch(function(){toast('That image could not be read. Try saving it as PNG or JPG first.');});
+  });
+  imgUrlIn.addEventListener('input',function(){ if(imgUrlIn.value.trim()){pendingSrc=null;imgFileIn.value='';imgPrev.hidden=true;} });
+
+  function openImageBox(){
+    if(!currentSection&&!lastBlock){toast('First click in the paragraph the image should follow, then click Add image.');return;}
+    askingImg=true; pendingSrc=null; imgFileIn.value=''; imgUrlIn.value=''; imgCapIn.value=''; imgPrev.hidden=true; render();
+  }
+  function insertFromBox(){
+    var url=imgUrlIn.value.trim();
+    if(!pendingSrc&&!url){toast('Choose an image, or type its address.');return;}
+    if(url&&/^\s*javascript:/i.test(url)){toast('That address is not an image.');return;}
+    insertFigure(pendingSrc||url, imgCapIn.value.trim(), imgCapIn.value.trim()||'Image');
+    askingImg=false; render();
+  }
+  function insertFigure(src,caption,alt){
+    var sec=currentSection||(lastBlock&&lastBlock.closest('main section'));
+    if(!sec){toast('First click in the paragraph the image should follow.');return;}
+    var fig=document.createElement('figure'); fig.className='guide-figure';
+    var img=document.createElement('img'); img.src=src; img.alt=alt||''; img.loading='lazy';
+    fig.appendChild(img);
+    if(caption){var fc=document.createElement('figcaption'); fc.textContent=caption; fig.appendChild(fc);}
+    var anchor=(lastBlock&&lastBlock.parentNode===sec)?lastBlock:null;
+    if(anchor)anchor.after(fig); else sec.appendChild(fig);
+    img.addEventListener('error',function(){toast('The image did not load. Check the address or file name.');},{once:true});
+    lastBlock=fig; fig.scrollIntoView({block:'center'}); markDirty();
+    toast(src.indexOf('data:')===0?'Image added and stored inside the page.':'Image added. Keep that file at the same address so it keeps showing.');
+  }
+  function removeImage(){
+    if(!currentImg)return;
+    var f=currentImg; currentImg=null; lastBlock=f.previousElementSibling||null; f.remove(); markDirty(); render();
+    toast('Image removed.');
+  }
+  /* read an image file; large photos are scaled down so the page stays a manageable size */
+  function fileToSrc(file){
+    return new Promise(function(resolve,reject){
+      var fr=new FileReader();
+      fr.onerror=function(){reject(fr.error);};
+      fr.onload=function(){
+        var data=fr.result;
+        if(/svg|gif/.test(file.type)||file.size<400*1024){resolve(data);return;}
+        var im=new Image();
+        im.onload=function(){
+          var max=1600, w=im.naturalWidth, h=im.naturalHeight, k=Math.min(1,max/w);
+          var c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+          c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+          var png=c.toDataURL('image/png');
+          resolve(png.length<1.5*1024*1024?png:c.toDataURL('image/jpeg',0.85));
+        };
+        im.onerror=function(){resolve(data);};
+        im.src=data;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  /* ---------- versions ---------- */
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function pad(n){return (n<10?'0':'')+n;}
+  function niceDate(d){return d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear()+', '+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function isoLocal(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+  function stampVersion(scope,n,d,note){
+    var f=scope.querySelector('#page-version'); if(!f)return;
+    f.setAttribute('data-version',String(n)); f.setAttribute('data-saved',isoLocal(d));
+    scope.querySelector('#ver-num').textContent=String(n);
+    scope.querySelector('#ver-date').textContent=niceDate(d);
+    var li=(scope.ownerDocument||scope).createElement('li');
+    li.innerHTML='<b>Version '+n+'</b> &middot; '+esc(niceDate(d))+(note?' &middot; '+esc(note):'');
+    var log=scope.querySelector('#ver-log'); log.insertBefore(li,log.firstChild);
+  }
+  function currentVersion(){
+    var f=document.getElementById('page-version');
+    return f?parseInt(f.getAttribute('data-version'),10)||1:1;
+  }
+
+  /* the save button first asks for an optional note, then downloads */
+  var noteBox=document.createElement('div'); noteBox.className='ver-note';
+  noteBox.innerHTML='<label for="ver-note-input">What changed? (optional, shown in the version history)</label>';
+  var noteInput=document.createElement('input'); noteInput.id='ver-note-input'; noteInput.type='text'; noteInput.maxLength=160;
+  noteInput.placeholder='e.g. Added the limit monitoring report';
+  var bDownload=btn('Download version','primary',doSave,'Download the new version');
+  var bCancelSave=btn('Cancel','',function(){askingNote=false;render();},'Back to editing');
+    noteBox.appendChild(noteInput); noteBox.appendChild(bDownload); noteBox.appendChild(bCancelSave);
+  noteInput.addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();doSave();} if(e.key==='Escape'){askingNote=false;render();} });
+  var askingNote=false;
+
+  function saveCopy(){
+    askingNote=true; noteInput.value=''; render();
+    noteBox.querySelector('label').textContent='Saving version '+(currentVersion()+1)+'. What changed? (optional)';
+    setTimeout(function(){noteInput.focus();},0);
+  }
+
+  async function doSave(){
+    var n=currentVersion()+1, now=new Date(), note=noteInput.value.trim();
+    var file='Metadata_Import_Guide_v'+n+'_'+isoLocal(now).slice(0,10)+'.html';
+    var html=buildHtml(function(clone){stampVersion(clone,n,now,note);});
+    try{
+      var dl=(window.claude&&window.claude.use)?await window.claude.use('downloads'):null;
+      if(dl){
+        await dl.save({filename:file,data:html});
+      }else{
+        var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a'); a.href=url; a.download=file; a.setAttribute('data-editor-ui','');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){URL.revokeObjectURL(url);},2000);
+      }
+      stampVersion(document,n,now,note);
+      askingNote=false; dirty=false; clearDraft(); render();
+      toast('Saved version '+n+' as '+file+'. Upload it to your site to publish the changes.');
+    }catch(err){
+      var code=err&&err.code;
+      if(code==='declined')toast('Download cancelled. Your edits are still on the page.');
+      else toast('The download did not start. Your edits are still on the page; try again.');
+    }
+  }
+
+  /* ---------- draft kept in this browser, in case the tab is closed ---------- */
+  function snapshot(){
+    return regions().map(function(r){return r.innerHTML;});
+  }
+  function saveDraft(){
+    try{localStorage.setItem(DRAFT_KEY,JSON.stringify({at:Date.now(),parts:snapshot()}));}catch(e){}
+  }
+  function clearDraft(){ try{localStorage.removeItem(DRAFT_KEY);}catch(e){} }
+  function offerDraft(){
+    var d=null; try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');}catch(e){}
+    if(!d||!d.parts||d.parts.length!==regions().length)return;
+    var same=snapshot().every(function(h,i){return h===d.parts[i];}); if(same){clearDraft();return;}
+    var box=document.createElement('div'); box.className='ed-draft gut'; box.setAttribute('data-editor-ui','');
+    var when=new Date(d.at).toLocaleString();
+    box.innerHTML='<div class="inner"><span>You have unsaved edits from '+when+' in this browser.</span></div>';
+    var inner=box.firstChild;
+    var r=document.createElement('button'); r.type='button'; r.textContent='Restore edits';
+    var x=document.createElement('button'); x.type='button'; x.textContent='Discard them';
+    r.onclick=function(){ regions().forEach(function(el,i){el.innerHTML=d.parts[i];}); window.__initAnims&&window.__initAnims(); box.remove(); dirty=true; render(); toast('Edits restored. Click Save new version to keep them in a file.'); };
+    x.onclick=function(){ clearDraft(); box.remove(); };
+    inner.appendChild(r); inner.appendChild(x);
+    var top=document.querySelector('header.top'); top.parentNode.insertBefore(box,top);
+  }
+
+  document.addEventListener('dragover',function(e){ if(editing&&e.target.closest&&e.target.closest('[contenteditable="true"]')&&e.dataTransfer&&[].slice.call(e.dataTransfer.types||[]).indexOf('Files')>-1)e.preventDefault(); });
+  document.addEventListener('drop',function(e){
+    if(!editing||!e.target.closest||!e.target.closest('[contenteditable="true"]'))return;
+    var f=e.dataTransfer&&e.dataTransfer.files&&[].slice.call(e.dataTransfer.files).filter(function(x){return /^image\//.test(x.type);})[0];
+    if(!f)return; e.preventDefault();
+    var t=e.target.nodeType===3?e.target.parentNode:e.target; var sec=t.closest('main section');
+    if(sec){var blk=t;while(blk&&blk.parentNode!==sec)blk=blk.parentNode;lastBlock=blk;setCurrent(sec,null);}
+    fileToSrc(f).then(function(src){insertFigure(src,'',f.name||'Image');}).catch(function(){toast('That image could not be read.');});
+  });
+
+  window.addEventListener('beforeunload',function(e){ if(dirty){e.preventDefault();e.returnValue='';} });
+
+  render();
+  offerDraft();
+})();
+</script>
+
+<script data-page="links">
+/* links between the two guides: a file next to this page on the static site,
+   the published copy when the page is opened inside claude.ai */
+document.addEventListener('click',function(e){
+  var a=e.target.closest&&e.target.closest('a[data-online-href]');
+  if(!a||document.documentElement.classList.contains('editing'))return;
+  if(window.claude&&window.claude.use){a.href=a.getAttribute('data-online-href');a.target='_blank';a.rel='noopener';}
+});
+</script>
+
+<style data-page="anim">
+.flow-anim{margin-top:16px}
+.fa{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:16px;display:grid;gap:12px}
+.fa-fly{position:absolute;left:0;top:0;z-index:3;pointer-events:none;font-family:var(--f-mono);font-size:12px;background:var(--green);color:var(--surface);border-radius:5px;padding:2px 7px;box-shadow:0 4px 14px rgba(0,0,0,.18);transition:transform .9s cubic-bezier(.5,0,.2,1),opacity .25s ease;white-space:nowrap}
+.fa-live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.fa-live i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.fa-live.on i{background:var(--green);animation:faBlink 1.2s ease-in-out infinite}
+@keyframes faBlink{50%{opacity:.25}}
+.fa-submit.click{animation:faPress .45s ease}
+@keyframes faPress{40%{transform:scale(.9)}}
+.fa-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.fa-grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px}
+.fa-card{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:12px;min-width:0;transition:opacity .35s ease,border-color .35s ease,box-shadow .35s ease}
+.fa-card.idle{opacity:.5}
+.fa-card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fa-h{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:8px}
+.fa-n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;border:1.5px solid currentColor;font-family:var(--f-mono);font-size:11px;letter-spacing:0}
+.fa-card.active .fa-h{color:var(--accent)}
+.fa-card.done .fa-h{color:var(--green)}
+.fa-card.done .fa-n{background:var(--green);border-color:var(--green);color:var(--surface)}
+.fa-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:6px;align-items:center;font-size:13px;margin-top:5px}
+.fa-field span:first-child{color:var(--muted)}
+.fa-select{font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:3px 6px;display:flex;justify-content:space-between;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.fa-select::after{content:"\25BE";color:var(--muted)}
+.fa-select.date::after{content:"\1F4C5";font-size:11px}
+.fa-submit{margin-top:9px;font-size:12px;font-weight:600;display:inline-block;padding:4px 12px;border-radius:5px;background:var(--line);color:var(--muted)}
+.fa-submit.on{background:var(--accent);color:var(--surface)}
+.fa-code{font-family:var(--f-mono);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.fa-code .k{color:var(--muted)}
+.fa-line{display:block;border-radius:4px;padding:0 4px;transition:background .3s ease,opacity .3s ease}
+.fa-line.hidden{opacity:0}
+.fa-line.hot{background:var(--amber-soft)}
+.fa-wait{font-size:12px;color:var(--muted);font-style:italic}
+.fa-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;font-family:var(--f-mono);font-size:12px}
+.fa-kv span:nth-child(odd){color:var(--muted)}
+.fa-kv span{overflow-wrap:anywhere;border-radius:4px;padding:0 3px;transition:background .3s ease}
+.fa-kv span.hot{background:var(--amber-soft)}
+.fa-pathline{font-family:var(--f-mono);font-size:13px;line-height:1.9;overflow-wrap:anywhere}
+.fa-tok{border-radius:4px;padding:1px 4px;white-space:nowrap}
+.fa-tok.ph{background:var(--amber-soft);color:var(--amber)}
+.fa-tok.val{background:var(--green-soft);color:var(--green)}
+.fa-tok.val.pop{animation:faPop .5s ease}
+@keyframes faPop{0%{transform:scale(.85);opacity:.3}60%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.fa-found{font-size:12px;color:var(--green);margin-top:4px;min-height:1.2em}
+.fa-sheet{width:100%;min-width:0;border-collapse:collapse;font-family:var(--f-mono);font-size:12px;margin-bottom:10px}
+.fa-sheet th,.fa-sheet td{border:1px solid var(--line);padding:3px 6px;text-align:left;background:var(--surface)}
+.fa-sheet th{background:var(--accent-soft);color:var(--accent);font-weight:500;text-transform:none;letter-spacing:0;font-size:12px}
+.fa-sheet .drop{color:var(--muted);text-decoration:line-through;transition:color .3s}
+.fa-sheet .drop.live{text-decoration:none}
+.fa-tabname{font-size:11px;color:var(--muted);margin:-4px 0 6px}
+.fa-map{display:grid;gap:4px;font-size:12px}
+.fa-maprow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.3fr) 18px;gap:6px;align-items:center;padding:3px 6px;border-radius:5px;background:var(--surface);border:1px solid var(--line);transition:background .3s ease,opacity .3s}
+.fa-maprow code{font-size:11px}
+.fa-maprow .st{font-weight:700;text-align:center}
+.fa-maprow.ok{background:var(--green-soft)}
+.fa-maprow.ok .st{color:var(--green)}
+.fa-maprow.no{background:var(--amber-soft)}
+.fa-maprow.no .st{color:var(--amber)}
+.fa-out{font-family:var(--f-mono);font-size:12px;overflow-wrap:anywhere;line-height:1.7}
+.fa-file{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:6px 10px;border-radius:6px;border:1px dashed var(--line);font-family:var(--f-mono);font-size:12px;color:var(--muted);transition:all .35s ease}
+.fa-file.saved{border-style:solid;border-color:var(--green);background:var(--green-soft);color:var(--green)}
+.fa-caption{font-size:15px;min-height:3em;border-left:3px solid var(--accent);padding:6px 12px;background:var(--accent-soft);border-radius:0 6px 6px 0}
+.fa-caption b{color:var(--accent)}
+.fa-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.fa-controls button{appearance:none;font:inherit;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer}
+.fa-controls button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.fa-controls button:disabled{opacity:.4;cursor:not-allowed}
+.fa-controls button.play{background:var(--accent);border-color:var(--accent);color:var(--surface);min-width:88px}
+.fa-controls button:focus-visible,.fa-dots button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fa-dots{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.fa-dots button{appearance:none;width:12px;height:12px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;padding:0;cursor:pointer}
+.fa-dots button.past{background:var(--accent-soft)}
+.fa-dots button.cur{background:var(--accent)}
+.fa-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.editing .flow-anim :is(td,th,p,li){box-shadow:none!important}
+@media (max-width:860px){.fa-grid,.fa-grid2{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){.fa-card,.fa-line,.fa-kv span,.fa-maprow,.fa-file{transition:none}.fa-tok.val.pop,.fa-live.on i,.fa-submit.click{animation:none}.fa-fly{display:none}}
+</style>
+
+<script data-page="anim">
+(function(){
+  /* One real row of 11_Metadata_Import_Configuration_Files.xlsx; run values are examples. */
+  var RUN={env:'BELINS_ENV_DEV',context:'DEMO',config:'CONFIG_DEMO',date:'30/09/2026',num:'20260930',root:'risk_engine/test/20260930'};
+  var STEPS=[
+    {t:'Choose the run values',c:'The user picks the <b>environment</b>, <b>context</b>, <b>configuration</b> and <b>reporting date</b> in the prompt form, then clicks Submit.'},
+    {t:'Build run_parameters',c:'Submit turns the choices into <b>run_parameters</b>, plus values derived from them: the date as a number and the period folder.'},
+    {t:'Read the control row',c:'The engine reads one line of <b>List_Of_Tables</b>: table <b>INTEREST_RATES_CURVES</b>, worksheet <b>CURVES</b>, output area <b>REF_PRM</b>.'},
+    {t:'Fill the period folder',c:'The first blank, <b>{thisrun_period_path_input}</b>, is replaced by the period folder from run_parameters.'},
+    {t:'Fill the configuration',c:'<b>{thisrun_config_id}</b> is replaced by the configuration chosen in the form.'},
+    {t:'Fill the date',c:'<b>{thisrun_reporting_date_num}</b> becomes 20260930. The path is complete and points to this quarter’s file.'},
+    {t:'Open the worksheet',c:'The engine opens RATES_CURVES_20260930.xlsx and reads <b>only</b> the CURVES worksheet named on the line.'},
+    {t:'Apply the schema',c:'The schema sheet <b>INTEREST_RATES_CURVES</b> keeps MATURITY, CURVE_ID and RATE and gives each its type. COMMENT is not in the schema, so it is dropped.'},
+    {t:'Save the table',c:'The table is saved as Parquet in the <b>REF_PRM</b> folder, replacing the previous version. Next line, same steps.'}
+  ];
+  var ROLE={form:[0,0],params:[1,5],row:[2,2],path:[3,5],sheet:[6,7],save:[8,8]};
+
+  function h(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+
+  function build(host){
+    host.innerHTML='';
+    host.setAttribute('contenteditable','false');
+    var fa=h('div','fa'); host.appendChild(fa);
+    var top=h('div','fa-grid'); fa.appendChild(top);
+
+    var form=h('div','fa-card'); form.dataset.k='form';
+    form.innerHTML='<div class="fa-h"><span class="fa-n">1</span>Prompt form</div>'+
+      field('Environment',RUN.env)+field('Context',RUN.context)+field('Configuration',RUN.config)+field('Reporting date',RUN.date,true)+
+      '<span class="fa-submit">Submit</span>';
+    top.appendChild(form);
+
+    var params=h('div','fa-card'); params.dataset.k='params';
+    params.innerHTML='<div class="fa-h"><span class="fa-n">2</span>run_parameters</div><div class="fa-wait">Waiting for Submit…</div><div class="fa-code">'+
+      line('env','thisrun_environment_id',RUN.env)+line('config','thisrun_config_id',RUN.config)+line('num','thisrun_reporting_date_num',RUN.num)+line('root','thisrun_period_path_input',RUN.root)+'</div>';
+    top.appendChild(params);
+
+    var row=h('div','fa-card'); row.dataset.k='row';
+    row.innerHTML='<div class="fa-h"><span class="fa-n">3</span>List_Of_Tables row</div><div class="fa-kv">'+
+      '<span>TABLE_LIBRARY</span><span data-f="lib">REF_PRM</span>'+
+      '<span>TABLE_NAME</span><span data-f="name">INTEREST_RATES_CURVES</span>'+
+      '<span>METHOD</span><span>EXCEL</span>'+
+      '<span>EXCEL_SHEET</span><span data-f="sheet">CURVES</span></div>';
+    top.appendChild(row);
+
+    var path=h('div','fa-card'); path.dataset.k='path';
+    path.innerHTML='<div class="fa-h"><span class="fa-n">4</span>TABLE_SOURCE_PATH</div><div class="fa-pathline">'+
+      tok(0,'{thisrun_period_path_input}',RUN.root)+'/configuration/'+tok(1,'{thisrun_config_id}',RUN.config)+'/01_raw_files/RATES_CURVES_'+tok(2,'{thisrun_reporting_date_num}',RUN.num)+'.xlsx</div><div class="fa-found"></div>';
+    fa.appendChild(path);
+
+    var bottom=h('div','fa-grid2'); fa.appendChild(bottom);
+    var sheet=h('div','fa-card'); sheet.dataset.k='sheet';
+    sheet.innerHTML='<div class="fa-h"><span class="fa-n">5</span>Worksheet → schema</div>'+
+      '<div class="fa-tabname">RATES_CURVES_20260930.xlsx › sheet CURVES</div>'+
+      '<div style="overflow-x:auto"><table class="fa-sheet"><thead><tr><th>MATURITY</th><th>CURVE_ID</th><th>RATE</th><th class="drop live">COMMENT</th></tr></thead><tbody>'+
+      '<tr><td>1</td><td>EUR_RFR</td><td>0.0245</td><td class="drop live">source</td></tr>'+
+      '<tr><td>2</td><td>EUR_RFR</td><td>0.0251</td><td class="drop live">source</td></tr>'+
+      '<tr><td>3</td><td>EUR_RFR</td><td>0.0258</td><td class="drop live">checked</td></tr></tbody></table></div>'+
+      '<div class="fa-map">'+
+      maprow('MATURITY','Amount · key 1',true)+maprow('CURVE_ID','Character(50) · key 2',true)+maprow('RATE','Percentage',true)+maprow('COMMENT','not in schema → dropped',false)+'</div>';
+    bottom.appendChild(sheet);
+
+    var save=h('div','fa-card'); save.dataset.k='save';
+    save.innerHTML='<div class="fa-h"><span class="fa-n">6</span>Saved</div><div class="fa-out"><span class="k" style="color:var(--muted)">REF_PRM →</span><br>thisrun_period_path_output_prm/<br>INTEREST_RATES_CURVES.parquet</div>'+
+      '<div class="fa-file">▤ <span class="fa-file-t">not saved yet</span></div>';
+    bottom.appendChild(save);
+
+    var cap=h('div','fa-caption'); cap.setAttribute('aria-live','polite'); fa.appendChild(cap);
+    var ctr=h('div','fa-controls'); fa.appendChild(ctr);
+    function b(lbl,cls,aria){var x=h('button',cls,lbl);x.type='button';if(aria)x.setAttribute('aria-label',aria);ctr.appendChild(x);return x;}
+    var bRestart=b('↺ Restart','','Restart from step 1'), bBack=b('‹ Back','','Previous step'), bPlay=b('▶ Play','play'), bNext=b('Next ›','','Next step');
+    var count=h('span','fa-count'); ctr.appendChild(count);
+    var live=h('span','fa-live','<i></i><span>paused</span>'); ctr.appendChild(live);
+    var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function fly(from,to,text){
+      if(reduce||!from||!to)return;
+      var base=fa.getBoundingClientRect(), a=from.getBoundingClientRect(), z=to.getBoundingClientRect();
+      if(!a.width||!z.width)return;
+      var chip=h('span','fa-fly'); chip.textContent=text; fa.appendChild(chip);
+      chip.style.transform='translate('+(a.left-base.left)+'px,'+(a.top-base.top)+'px)';
+      void chip.offsetWidth;
+      chip.style.transform='translate('+(z.left-base.left)+'px,'+(z.top-base.top)+'px)';
+      setTimeout(function(){chip.style.opacity='0';},900); setTimeout(function(){chip.remove();},1200);
+    }
+    var dots=h('div','fa-dots'); dots.setAttribute('aria-label','Steps'); ctr.appendChild(dots);
+    STEPS.forEach(function(s,i){var d=h('button');d.type='button';d.setAttribute('aria-label','Step '+(i+1)+': '+s.t);d.title=s.t;d.addEventListener('click',function(){userTook=true;stop();go(i);stop();});dots.appendChild(d);});
+
+    var step=0,timer=null,last=-1;
+    function go(n){
+      step=Math.max(0,Math.min(STEPS.length-1,n));
+      [form,params,row,path,sheet,save].forEach(function(c){
+        var r=ROLE[c.dataset.k];
+        c.classList.toggle('active',step>=r[0]&&step<=r[1]);
+        c.classList.toggle('done',step>r[1]);
+        c.classList.toggle('idle',step<r[0]);
+      });
+      var sb=form.querySelector('.fa-submit'); sb.classList.toggle('on',step>=0);
+      if(step===1&&last===0){sb.classList.remove('click');void sb.offsetWidth;sb.classList.add('click');}
+      params.querySelector('.fa-wait').hidden=step>=1;
+      var hot={3:'root',4:'config',5:'num'}[step];
+      [].forEach.call(params.querySelectorAll('.fa-line'),function(l){l.classList.toggle('hidden',step<1);l.classList.toggle('hot',l.dataset.l===hot);});
+      [].forEach.call(row.querySelectorAll('[data-f]'),function(s){var f=s.dataset.f;s.classList.toggle('hot',(step===2)||(step===6&&f==='sheet')||(step===8&&f==='lib')||(step===7&&f==='name'));});
+      [].forEach.call(path.querySelectorAll('.fa-tok'),function(t){
+        var i=+t.dataset.i, filled=step>=3+i, was=t.classList.contains('val');
+        t.textContent=filled?t.dataset.v:t.dataset.p;
+        t.classList.toggle('val',filled);t.classList.toggle('ph',!filled);
+        t.classList.remove('pop'); if(filled&&!was&&step===3+i){void t.offsetWidth;t.classList.add('pop');fly(params.querySelector('.fa-line[data-l="'+['root','config','num'][i]+'"]'),t,t.dataset.v);}
+      });
+      path.querySelector('.fa-found').textContent=step>=5?'✓ file found for this run':'';
+      [].forEach.call(sheet.querySelectorAll('.drop'),function(c){c.classList.toggle('live',step<7);});
+      [].forEach.call(sheet.querySelectorAll('.fa-maprow'),function(m){m.style.opacity=step>=7?'1':'.45';m.classList.toggle('ok',step>=7&&m.dataset.ok==='1');m.classList.toggle('no',step>=7&&m.dataset.ok==='0');m.querySelector('.st').textContent=step>=7?(m.dataset.ok==='1'?'✓':'✕'):'';});
+      var f=save.querySelector('.fa-file'); f.classList.toggle('saved',step>=8); f.querySelector('.fa-file-t').textContent=step>=8?'saved · overwrite · 3 rows':'not saved yet';
+      cap.innerHTML='<b>Step '+(step+1)+' · '+STEPS[step].t+'.</b> '+STEPS[step].c;
+      count.textContent=(step+1)+' / '+STEPS.length;
+      [].forEach.call(dots.children,function(d,i){d.className=i===step?'cur':(i<step?'past':'');d.setAttribute('aria-current',i===step?'step':'false');});
+      bBack.disabled=step===0; bNext.disabled=step===STEPS.length-1;
+      last=step;
+    }
+    var userTook=false, loopT=null;
+    function setLive(on){live.classList.toggle('on',on);live.lastChild.textContent=on?'playing':'paused';}
+    function stop(){ if(timer){clearInterval(timer);timer=null;} clearTimeout(loopT); setLive(false); bPlay.innerHTML=step===STEPS.length-1?'↺ Replay':'▶ Play'; }
+    function play(){
+      if(timer){stop();return;}
+      if(step===STEPS.length-1)go(0);
+      bPlay.innerHTML='❚❚ Pause';
+      setLive(true);
+      timer=setInterval(function(){
+        if(step>=STEPS.length-1){stop();return;}
+        go(step+1);
+        if(step===STEPS.length-1){ stop(); if(!userTook){ setLive(true); loopT=setTimeout(function(){ if(!userTook){go(0);play();} },4500);} }
+      },2600);
+    }
+    /* start by itself the first time it scrolls into view, and keep looping until someone takes control */
+    if(!reduce&&'IntersectionObserver' in window){
+      var seen=false, io=new IntersectionObserver(function(es){
+        es.forEach(function(e){
+          if(e.isIntersecting&&!seen&&!userTook){seen=true;setTimeout(function(){if(!userTook&&!timer)play();},600);}
+          if(!e.isIntersecting&&!userTook){stop();seen=false;}
+        });
+      },{threshold:.35});
+      io.observe(fa);
+    }
+    bPlay.addEventListener('click',function(){userTook=true;play();});
+    bNext.addEventListener('click',function(){userTook=true;stop();go(step+1);stop();});
+    bBack.addEventListener('click',function(){userTook=true;stop();go(step-1);stop();});
+    bRestart.addEventListener('click',function(){userTook=true;stop();go(0);stop();});
+    go(0); stop();
+  }
+  function field(l,v,date){return '<div class="fa-field"><span>'+l+'</span><span class="fa-select'+(date?' date':'')+'">'+esc(v)+'</span></div>';}
+  function line(k,key,v){return '<span class="fa-line hidden" data-l="'+k+'"><span class="k">'+key+':</span> "'+esc(v)+'"</span>';}
+  function tok(i,p,v){return '<span class="fa-tok ph" data-i="'+i+'" data-p="'+esc(p)+'" data-v="'+esc(v)+'">'+esc(p)+'</span>';}
+  function maprow(n,t,ok){return '<div class="fa-maprow" data-ok="'+(ok?1:0)+'"><code>'+n+'</code><span aria-hidden="true">→</span><span>'+t+'</span><span class="st"></span></div>';}
+
+  window.__initAnims=function(){ [].forEach.call(document.querySelectorAll('[data-anim="import"]'),build); };
+  window.__initAnims();
+})();
+</script>
+</body></html>
