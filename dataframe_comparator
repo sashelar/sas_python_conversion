@@ -23,7 +23,7 @@ class DataFrameComparator:
                  key_columns: List[str] = None,
                  df1_name: str = "DF1",
                  df2_name: str = "DF2",
-                 numeric_precision: int = 6,
+                 numeric_precision: int = 3,
                  fuzzy_threshold: float = 0.8):
         """
         Initialize the DataFrameComparator
@@ -154,8 +154,8 @@ class DataFrameComparator:
         
         schema1 = {field.name: str(field.dataType) for field in self.df1.schema.fields}
         schema2 = {field.name: str(field.dataType) for field in self.df2.schema.fields}
-        print("schema1",schema1)
-        print("schema2",schema2)
+        # print("schema1",schema1)
+        # print("schema2",schema2)
         
         common_cols = set(schema1.keys()).intersection(set(schema2.keys()))
         
@@ -202,11 +202,11 @@ class DataFrameComparator:
                 print(f"   Sorting by key columns: {valid_keys}")
                 sort_cols = [F.col(c) for c in valid_keys]
                 df1_sorted = df1_compare.orderBy(sort_cols)
-                print("df1_sorted")
-                df1_sorted.show(truncate=False)
+                # print("df1_sorted")
+                # df1_sorted.show(truncate=False)
                 df2_sorted = df2_compare.orderBy(sort_cols)
-                print("df2_sorted")
-                df2_sorted.show(truncate=False)
+                # print("df2_sorted")
+                # df2_sorted.show(truncate=False)
             else:
                 print("   ⚠️  Key columns not found, using all columns for sorting")
                 sort_cols = [F.col(c) for c in common_cols]
@@ -242,8 +242,8 @@ class DataFrameComparator:
                 on="_row_num",
                 how="full_outer"
             )
-        print("joined_df",joined_df)
-        joined_df.show(20, truncate=False)
+        # print("joined_df",joined_df)
+        # joined_df.show(20, truncate=False)
         
         # Analyze each column
         column_comparisons = {}
@@ -302,7 +302,14 @@ class DataFrameComparator:
             (F.col(col2) - F.col(col1)).alias("difference"),
             F.abs(F.col(col2) - F.col(col1)).alias("abs_difference"),
             # F.when(F.col(col1) == F.col(col2), 1).otherwise(0).alias("exact_match")
-            F.when(F.col(col1).eqNullSafe(F.col(col2)), 1).otherwise(0).alias("exact_match")
+            # F.when(F.col(col1).eqNullSafe(F.col(col2)), 1).otherwise(0).alias("exact_match")
+            F.when(
+                F.round(F.col(col1), self.numeric_precision)
+                .eqNullSafe(
+                    F.round(F.col(col2), self.numeric_precision)
+                ),
+                1
+            ).otherwise(0).alias("exact_match")            
         ).cache()
         
         total_rows = self.df1.count()
@@ -331,9 +338,9 @@ class DataFrameComparator:
         ).limit(10).collect()
 
         sample_only_df1 = diff_df.filter(F.col("val1").isNotNull() & F.col("val2").isNull()).limit(5).collect()
-        print("sample_only_df1",sample_only_df1)
+        # print("sample_only_df1",sample_only_df1)
         sample_only_df2 = diff_df.filter(F.col("val1").isNull() & F.col("val2").isNotNull()).limit(5).collect()
-        print("sample_only_df2",sample_only_df2)
+        # print("sample_only_df2",sample_only_df2)
         # sample_mismatches = sample_mismatches + sample_only_df1 + sample_only_df2
         
 
@@ -393,7 +400,7 @@ class DataFrameComparator:
             'only_in_df1': int(stats['only_df1_non_null'] or 0),  # New  
             'only_in_df2': int(stats['only_df2_non_null'] or 0),  # New  
             'all_values_match': mismatches_numeric == 0,
-            'match_percentage': round((exact_matches / total_rows * 100), 2) if total_rows > 0 else 0,
+            'match_percentage': round(((exact_matches / total_rows) * 100), 2) if total_rows > 0 else 0,
             'statistics': {
                 'average_difference': float(stats['avg_difference']) if stats['avg_difference'] else 0.0,
                 'min_difference': float(stats['min_difference']) if stats['min_difference'] else 0.0,
@@ -412,7 +419,7 @@ class DataFrameComparator:
         common_cols = sorted(list(set(self.df1.columns).intersection(set(self.df2.columns))))
         valid_keys = [k for k in self.key_columns if k in common_cols]
         first_key = valid_keys[0] if valid_keys else None 
-        print("first_key",first_key)
+        # print("first_key",first_key)
         first_key = f"df1.{first_key}"
 
         
@@ -459,7 +466,7 @@ class DataFrameComparator:
         ).collect()[0]
         
         exact_matches = stats['exact_matches'] or 0
-        print("exact_matches",exact_matches)
+        # print("exact_matches",exact_matches)
 
 
         stats_with_null = comparison_df_with_null.agg(
@@ -473,7 +480,12 @@ class DataFrameComparator:
         only_df1_non_null = stats_with_null['only_df1_non_null'] or 0
         both_non_null = stats_with_null['both_non_null'] or 0
         both_null = stats_with_null['both_null'] or 0
-        exact_matches = exact_matches + both_null
+        if total_rows == exact_matches:
+            pass
+        else:
+            if both_null > 0:
+                print("exact_matches",exact_matches,"adding both_null",both_null)
+                exact_matches = exact_matches + both_null
         
         # mismatches_string = int(both_non_null - exact_matches) + int(only_df1_non_null)
         mismatches_string = int(total_rows - exact_matches)
@@ -486,10 +498,10 @@ class DataFrameComparator:
 
         sample_only_df1 = comparison_df_with_null.filter(F.col("val1").isNotNull() & F.col("val2").isNull()).withColumn("fuzzy_score", F.lit(0)).limit(5).collect()
 
-        print("sample_only_df1",sample_only_df1)
+        # print("sample_only_df1",sample_only_df1)
         sample_only_df2 = comparison_df_with_null.filter(F.col("val1").isNull() & F.col("val2").isNotNull()).withColumn("fuzzy_score", F.lit(0)).limit(5).collect()
 
-        print("sample_only_df2",sample_only_df2)
+        # print("sample_only_df2",sample_only_df2)
         # sample_mismatches = sample_mismatches + sample_only_df1 + sample_only_df2
 
         
@@ -553,7 +565,7 @@ class DataFrameComparator:
             'only_in_df1': int(stats_with_null['only_df1_non_null'] or 0),  # New  
             'only_in_df2': int(stats_with_null['only_df2_non_null'] or 0),  # New              
             'all_values_match': exact_matches == total_rows,
-            'match_percentage': round((exact_matches / total_rows * 100), 2) if total_rows > 0 else 0,
+            'match_percentage': round(((exact_matches / total_rows) * 100), 2) if total_rows > 0 else 0,
             'fuzzy_threshold': self.fuzzy_threshold,
             'statistics': {
                 'average_fuzzy_score': round(float(stats['avg_fuzzy_score']), 4) if stats['avg_fuzzy_score'] else 0.0,
@@ -601,7 +613,7 @@ class DataFrameComparator:
                     matching_cols += 1
             total_cols = len(data_details)
 
-            print("data_details",data_details)
+            # print("data_details",data_details)
             # matching_cols = sum([1 for d in data_details.values() if d['all_values_match']])
             # total_cols = len(data_details)
             print(f"   Data Match: {matching_cols}/{total_cols} columns match perfectly")
