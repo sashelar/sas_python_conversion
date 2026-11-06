@@ -1,0 +1,236 @@
+def import_structured_xlsx(layer:str ,meta_source_folder:str,meta_source_file:str ,meta_source_id:str, data_source_file:str, data_sheet_name:str):
+    print(locals())
+
+    #   map the types definied in excel to spark ones
+    column_types = {  
+        'Date': DateType(),  
+        'Character': StringType(),  
+        'Amount': DoubleType(),  
+        'Percentage': DoubleType(),
+        'Numeric': DoubleType(),
+        'Integer': IntegerType()
+    }
+
+    target_df_structure = excel.read_excel_file(layer=layer, 
+                    folder_name=meta_source_folder, 
+                    file_name=meta_source_file, 
+                    sheet_name=meta_source_id)
+
+    # remove blank lines
+    target_df_structure=target_df_structure.dropna(how='all')
+    fields=[]
+    for row in target_df_structure.collect():
+        column_name=row['Column_Name']
+        column_type=row['Column_Type']
+        fields.append(StructField(column_name, column_types[column_type], True))
+
+    schema = StructType(fields)  
+    target_df = spark.createDataFrame([], schema)
+
+    # print(data_sheet_name)
+    # target_df.printSchema()
+    #   import the excel sheet
+    folder_file_dict = split_abfss_path(data_source_file)
+    # imported_df=spark.read \
+    #     .format("com.crealytics.spark.excel") \
+    #     .option("header", "true") \
+    #     .option("inferSchema", "true") \
+    #     .option("dataAddress", f"'{data_sheet_name}'!") \
+    #     .load(data_source_file)
+
+    print("folder name:",folder_file_dict["folder_name"],"file name:",folder_file_dict["file_name"],data_sheet_name)
+
+    try:
+        imported_df = excel.read_excel_file(layer=layer, 
+                        folder_name=folder_file_dict["folder_name"], 
+                        file_name=folder_file_dict["file_name"], 
+                        sheet_name=data_sheet_name)
+    except:
+        FilePathToImport = data_source_file
+        folder_file_name = folder_file_dict["file_name"]
+        FilePathToImport_tmp = f"/tmp/{folder_file_name}"
+        mssparkutils.fs.cp(FilePathToImport,f"file://{FilePathToImport_tmp}")
+        try:
+            work_df= pd.read_excel(f"file://{FilePathToImport_tmp}", sheet_name=data_sheet_name)
+        except:
+            print("sheet name :",data_sheet_name," maybe case sensitive , trying to locate exact name")
+            sheet_name_returned = worksheet_lookup_in_excel(data_sheet_name,FilePathToImport_tmp)
+            work_df= pd.read_excel(f"file://{FilePathToImport_tmp}", sheet_name=sheet_name_returned)
+        imported_df = spark.createDataFrame(work_df)                        
+
+    # remove blank lines
+    imported_df=imported_df.withColumn("XXX_concat_XXX", concat_ws("",*imported_df.columns)).filter(col("XXX_concat_XXX")!="").drop("XXX_concat_XXX")
+    # display(imported_df)
+    #   matching imported data and target data. 
+    #       1. Keep only variables in common. Wrongly imported columns will then be ignored
+
+    list_common_vars=list(set(target_df.columns) & set(imported_df.columns))
+
+    #       2. keep the fields of the imported dataframe that are also in the target dataframe
+    imported_df=imported_df.select([F.col(c) for c in list_common_vars])
+
+    #       3. cast imported columns to require format 
+    for column_name in list_common_vars:
+        column_type=target_df.schema[column_name].dataType
+        imported_df=imported_df.withColumn(column_name,F.col(column_name).cast(column_type))
+
+    #       4. append casted data to the expected structure
+    target_df=target_df.unionByName(imported_df, allowMissingColumns=True)
+
+    #       5. enforce columns to uppercase
+    target_df = target_df.toDF(*[col.upper() for col in target_df.columns])
+
+    return target_df
+
+
+
+def import_structured_csv(layer:str ,meta_source_folder:str,meta_source_file:str ,meta_source_id:str, data_source_file:str, file_delimiter:str, file_date_format:str, file_datetime_format = "dd/MM/yyyy H:mm"):
+    print(locals())
+
+    #   map the types definied in excel to spark ones
+    column_types = {  
+        'Date': DateType(),  
+        'Character': StringType(),  
+        'Amount': StringType(),  
+        'Percentage': DoubleType(),
+        'Numeric': DoubleType(),
+        'Integer': IntegerType(),
+        'Datetime': TimestampType(),
+        'AmountComma': StringType()
+    }
+    # AmountComma will be later converterted into double
+
+    target_df_structure = excel.read_excel_file(layer=layer, 
+                    folder_name=meta_source_folder, 
+                    file_name=meta_source_file, 
+                    sheet_name=meta_source_id)
+
+    # remove blank lines
+    target_df_structure=target_df_structure.dropna(how='all')
+    fields=[]
+    fields_amount=[]
+    fields_comma=[]
+
+    for row in target_df_structure.collect():
+        column_name=row['Column_Name']
+        column_type=row['Column_Type']
+        fields.append(StructField(column_name, column_types[column_type], True))
+        if column_type == 'Amount':
+            fields_amount.append(column_name)
+        if column_type == 'AmountComma':
+            fields_comma.append(column_name)
+
+    schema = StructType(fields)  
+    print(data_source_file)
+    # print("schema",schema)
+    df = spark.read.csv(  
+        path=data_source_file,  
+        header=True,          # Use first row as header  
+        schema=schema,        # Apply the schema  
+        sep=file_delimiter,             # Delimiter (default: ",")  
+        # dateFormat="dd/MM/yyyy",  # Optional: Specify date format
+        dateFormat=file_date_format,
+        timestampFormat=file_datetime_format
+        # timestampFormat="dd/MM/yyyy H:mm"
+
+    )
+    for field in fields_amount:
+        df=df.withColumn(field, regexp_replace(field, ',', '')).withColumn(field, F.col(field).cast("double"))
+    for field in fields_comma:
+        df=df.withColumn(field, regexp_replace(field, ',', '.')).withColumn(field, F.col(field).cast("double"))
+    return df
+
+
+  def import_sources(source_group, meta_source,run_parameters):
+
+    file_path_dict=split_abfss_path(meta_source)
+    list_of_sources = excel.read_excel_file(layer="ref",
+                        folder_name=file_path_dict["folder_name"],
+                        file_name=file_path_dict["file_name"],
+                        sheet_name="List_Of_Tables"
+    )
+    list_of_sources=list_of_sources.filter(F.col("TABLE_GROUP")==source_group).collect()
+    # .filter(F.col("TABLE_NAME")=="ACCOUNT_LGAAP")
+    # display(list_of_sources)
+    dicts={}
+
+    for src in list_of_sources:
+        src_id=src["TABLE_NAME"]
+        src_file=src["TABLE_SOURCE_PATH"]
+        if src_file: 
+            src_file=src_file.format(**run_parameters)
+        src_import_method=src["IMPORT_FILE_IMPORT_METHOD"]
+        src_sheet_name=src["IMPORT_FILE_EXCEL_SHEET"]
+        src_fct=src["TABLE_SOURCE_FUNCTION"]
+        src_date_fmt=src["SOURCE_DATE_FORMAT"]
+        src_datetime_fmt=src["SOURCE_DATETIME_FORMAT"]
+
+        src_file_directory="/".join(src_file.split("/")[:-1])
+        src_file_name=src_file.split("/")[-1]
+        # print(src_file_directory)
+        # print(src_file_name)
+        src_file=find_matching_file(src_file_directory, src_file_name)
+        print(datetime.now(), src_id, src_file)
+        # testing if file exists
+        if not src_file or not utility_file_exists(src_file):
+            print("File does not exist", src_id, src_file)
+
+        # loading the files using functions
+        elif src_import_method=="FUNCTION":
+            if src_file:
+                try:
+                    # print("src file exists")
+                    dicts[src_id]=globals()[src_fct](Source_File=src_file)
+                    print(datetime.now()  , src_id, src_fct, src_file)
+                except:
+                    print(src_id, src_fct, "failed")
+            else:
+                try:
+                    print("no src file", src_id, src_file)
+                    dicts[src_id]=globals()[src_fct]()
+                    print(datetime.now()  , src_id, src_fct)
+                except:
+                    print(src_id, src_fct, "failed", src_file)
+                
+        elif src_import_method=='EXCEL':
+            try:
+                imported_src=import_structured_xlsx(
+                    layer=layer,
+                    meta_source_folder=metadata_source_folder,
+                    meta_source_file=metadata_source_file, 
+                    meta_source_id=src_id, 
+                    data_source_file=src_file, 
+                    data_sheet_name=src_sheet_name)
+                print(datetime.now(), src_id, imported_src.count(), " lines")
+                dicts[src_id]=imported_src
+            except:
+                print(src_file, "failed")
+        elif src_import_method in ['CSV', 'PIPE', "TAB"]:
+
+            if src_import_method=="PIPE":
+                file_delimiter="|"
+            elif src_import_method=="TAB":
+                file_delimiter="\t"
+            else:
+                file_delimiter=";"
+            # print(metadata_source_folder)
+            # print(metadata_source_file)
+            # print(src_id)
+            imported_src=import_structured_csv(
+                layer=layer,
+                meta_source_folder=metadata_source_folder,
+                meta_source_file=metadata_source_file, 
+                meta_source_id=src_id, 
+                data_source_file=src_file,
+                file_delimiter=file_delimiter,
+                file_date_format=src_date_fmt,
+                file_datetime_format=src_datetime_fmt)
+            print(datetime.now(), src_id, imported_src.count(), " lines")
+            dicts[src_id]=imported_src
+    return dicts
+
+
+
+
+
+      
