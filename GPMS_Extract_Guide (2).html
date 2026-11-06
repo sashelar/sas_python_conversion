@@ -1,0 +1,1132 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-size:14px}[hidden]{display:none!important}img{max-width:100%}</style><title>GPMS Extract Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: page header + sticky two-tab bar; each tab = side index + reading column */
+:root{
+  --bg:#F5F7F9; --surface:#FFFFFF; --ink:#18222E; --muted:#56657A; --line:#DCE2EA;
+  --accent:#1D5C8C; --accent-soft:#E3EEF7; --amber:#9A5B0C; --amber-soft:#FBF0DE;
+  --green:#2D6A4F; --green-soft:#E2F1E8; --codebg:#EEF2F6;
+  --f-display:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161D; --surface:#18202A; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3542;
+  --accent:#7DB4E0; --accent-soft:#1B2E40; --amber:#E7B566; --amber-soft:#33281A;
+  --green:#86C9A4; --green-soft:#1A2E25; --codebg:#141B23; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1120px;margin:0 auto}
+a{color:var(--accent)}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--f-mono);font-size:.86rem;line-height:1.55;background:var(--codebg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:16px 0 0;color:var(--ink)}
+pre .c{color:var(--muted)}
+pre .k{color:var(--accent)}
+
+header.top{padding-block:36px 20px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 8px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(2rem,4vw,2.75rem);font-weight:650}
+h2{font-size:1.65rem;font-weight:650;margin-bottom:12px}
+h3{font-size:1.15rem;font-weight:650;margin-bottom:6px}
+.lede{font-size:1.1rem;color:var(--muted);max-width:62ch;margin:12px 0 0}
+
+/* tabs */
+.tabbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px}
+.tab{appearance:none;border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:12px 18px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.tab small{font-weight:400;font-size:12px;color:var(--muted)}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+
+.panelwrap{display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px;padding-block:28px 80px}
+nav.index{position:sticky;top:calc(84px + env(safe-area-inset-top,0px));align-self:start;font-size:14px;max-height:calc(100vh - 100px - env(safe-area-inset-top,0px));overflow-y:auto;overscroll-behavior:contain;padding-right:6px;scrollbar-width:thin}
+nav.index p{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+nav.index ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;border-left:1px solid var(--line)}
+nav.index a{display:block;padding:5px 12px;color:var(--muted);text-decoration:none;margin-left:-1px;border-left:2px solid transparent}
+nav.index a:hover,nav.index a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+main{min-width:0}
+section{padding-block:12px 36px;border-bottom:1px solid var(--line);margin-bottom:28px;scroll-margin-top:96px}
+section:last-of-type{border-bottom:0}
+section > p,.prose{max-width:66ch}
+.oneliner{background:var(--accent-soft);border-left:3px solid var(--accent);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:16px 0}
+.oneliner b{color:var(--accent)}
+.crosslink{font-size:.92rem;color:var(--muted);margin-top:14px}
+.crosslink button{appearance:none;border:0;background:none;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0}
+
+/* pipeline */
+.pipe{display:grid;margin-top:20px}
+.stage{display:grid;grid-template-columns:44px minmax(0,1fr);gap:16px}
+.stage .rail{display:flex;flex-direction:column;align-items:center}
+.stage .dot{width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);color:var(--accent);font-family:var(--f-mono);font-size:13px;font-weight:500;display:grid;place-items:center;flex:none}
+.stage .rail::after{content:"";flex:1;width:2px;background:var(--line);margin:4px 0}
+.stage:last-child .rail::after{display:none}
+.stage .body{padding-bottom:22px;min-width:0}
+.stage .body h3{margin-top:4px}
+.stage .body p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;font-family:var(--f-body)}
+.tag.done{background:var(--green-soft);color:var(--green)}
+.tag.next{background:var(--amber-soft);color:var(--amber)}
+
+.boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.box .code-big{font-family:var(--f-mono);font-size:1.25rem;color:var(--accent);font-weight:500}
+.box .what{font-weight:600}
+.box p{margin:0;color:var(--muted);font-size:.95rem}
+.meter{margin-top:auto;padding-top:10px;font-size:12px;color:var(--muted)}
+.meter .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}
+.meter .bar i{display:block;height:100%;background:var(--amber)}
+
+.tbl{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;min-width:600px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.mono{font-family:var(--f-mono);font-size:.88rem;white-space:nowrap;color:var(--accent)}
+
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}
+.panel h3{font-family:var(--f-body);font-size:1rem;font-weight:600}
+.panel p,.panel ul{margin:6px 0 0;color:var(--muted);font-size:.95rem}
+.panel ul{padding-left:18px}
+.example{font-family:var(--f-mono);font-size:.9rem;background:var(--surface);border:1px dashed var(--line);border-radius:6px;padding:12px 14px;margin-top:16px;max-width:66ch}
+.example span{display:inline-block;min-width:150px;color:var(--muted)}
+.example div{overflow-wrap:anywhere}
+
+.chain{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:18px}
+.chain .node{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;flex:1 1 150px;min-width:0}
+.chain .node b{display:block;font-size:.95rem}
+.chain .node small{color:var(--muted);font-size:.85rem;display:block;margin-top:2px;overflow-wrap:anywhere}
+.chain .node .v{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);margin-top:8px;display:block;overflow-wrap:anywhere}
+.chain .arrow{align-self:center;color:var(--muted);font-family:var(--f-mono)}
+.note{font-size:.92rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:20px;max-width:66ch}
+.warn{background:var(--amber-soft);border-left:3px solid var(--amber);padding:12px 16px;border-radius:0 6px 6px 0;max-width:66ch;margin:20px 0 0;font-size:.95rem}
+.warn b{color:var(--amber)}
+
+.detail-list{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 16px}
+.detail-list summary{cursor:pointer;font-weight:600;padding:12px 0;color:var(--accent);list-style-position:outside}
+.detail-list summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.detail-list[open] summary{border-bottom:1px solid var(--line);margin-bottom:16px}
+.detail-list[open]{padding-bottom:12px}
+.detail-list h3{font-family:var(--f-body);font-size:.95rem;font-weight:600;margin:14px 0 6px}
+ol.nb{margin:0;padding-left:22px;display:grid;gap:3px;font-size:.92rem}
+.gsearch{width:100%;max-width:420px;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);margin-top:8px}
+.gsearch:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+dl.gloss{display:grid;grid-template-columns:minmax(140px,200px) minmax(0,1fr);margin:16px 0 0;border-top:1px solid var(--line)}
+dl.gloss dt,dl.gloss dd{padding:10px 0;border-bottom:1px solid var(--line);margin:0}
+dl.gloss dt{font-weight:600;padding-right:16px}
+dl.gloss dd{color:var(--muted)}
+.empty{color:var(--muted);font-style:italic;margin-top:12px}
+
+@media (max-width:860px){
+  .panelwrap{grid-template-columns:minmax(0,1fr);gap:8px;padding-block:20px 60px}
+  nav.index{position:static;max-height:none;overflow:visible}
+  nav.index ol{display:flex;flex-wrap:wrap;gap:6px;border:0}
+  nav.index a{border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:0;background:var(--surface)}
+  .boxes,.cols2{grid-template-columns:minmax(0,1fr)}
+  dl.gloss{grid-template-columns:minmax(0,1fr)}
+  dl.gloss dt{border-bottom:0;padding-bottom:0}
+  .chain .arrow{display:none}
+  .tab{padding:10px 12px}
+}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<style data-page="brand">
+/* GPMS identity: plum accent on the shared neutrals */
+:root{--accent:#7A3368;--accent-soft:#F5E8F1}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--accent:#E2A9D2;--accent-soft:#3A2436}}
+:root[data-theme="dark"]{--accent:#E2A9D2;--accent-soft:#3A2436}
+.tk{background:var(--amber-soft);color:var(--amber);border-radius:3px;padding:0 2px}
+table.cols td.mono{white-space:normal;overflow-wrap:break-word}
+.miss{color:var(--amber);font-style:italic}
+.bad{color:var(--amber);font-weight:600}
+.inv2 tr.grp td{background:var(--bg);color:var(--accent)}
+.inv2 td.mono{white-space:normal;overflow-wrap:anywhere}
+#t-readers td:nth-child(3){min-width:230px}
+#t-readers code{overflow-wrap:normal}
+.inv2 td:nth-child(3){min-width:240px}
+table.cols2t{min-width:0}
+</style>
+<style data-page="anim">
+.flow-anim{margin-top:16px}
+.fa{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:16px;display:grid;gap:12px}
+.fa-fly{position:absolute;left:0;top:0;z-index:3;pointer-events:none;font-family:var(--f-mono);font-size:12px;background:var(--green);color:var(--surface);border-radius:5px;padding:2px 7px;box-shadow:0 4px 14px rgba(0,0,0,.18);transition:transform .9s cubic-bezier(.5,0,.2,1),opacity .25s ease;white-space:nowrap}
+.fa-live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.fa-live i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.fa-live.on i{background:var(--green);animation:faBlink 1.2s ease-in-out infinite}
+@keyframes faBlink{50%{opacity:.25}}
+.fa-submit.click{animation:faPress .45s ease}
+@keyframes faPress{40%{transform:scale(.9)}}
+.fa-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.fa-grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px}
+.fa-card{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:12px;min-width:0;transition:opacity .35s ease,border-color .35s ease,box-shadow .35s ease}
+.fa-card.idle{opacity:.5}
+.fa-card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fa-h{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:8px}
+.fa-n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;border:1.5px solid currentColor;font-family:var(--f-mono);font-size:11px;letter-spacing:0}
+.fa-card.active .fa-h{color:var(--accent)}
+.fa-card.done .fa-h{color:var(--green)}
+.fa-card.done .fa-n{background:var(--green);border-color:var(--green);color:var(--surface)}
+.fa-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:6px;align-items:center;font-size:13px;margin-top:5px}
+.fa-field span:first-child{color:var(--muted)}
+.fa-select{font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:3px 6px;display:flex;justify-content:space-between;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.fa-select::after{content:"\25BE";color:var(--muted)}
+.fa-select.date::after{content:"\1F4C5";font-size:11px}
+.fa-submit{margin-top:9px;font-size:12px;font-weight:600;display:inline-block;padding:4px 12px;border-radius:5px;background:var(--line);color:var(--muted)}
+.fa-submit.on{background:var(--accent);color:var(--surface)}
+.fa-code{font-family:var(--f-mono);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.fa-code .k{color:var(--muted)}
+.fa-line{display:block;border-radius:4px;padding:0 4px;transition:background .3s ease,opacity .3s ease}
+.fa-line.hidden{opacity:0}
+.fa-line.hot{background:var(--amber-soft)}
+.fa-wait{font-size:12px;color:var(--muted);font-style:italic}
+.fa-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;font-family:var(--f-mono);font-size:12px}
+.fa-kv span:nth-child(odd){color:var(--muted)}
+.fa-kv span{overflow-wrap:anywhere;border-radius:4px;padding:0 3px;transition:background .3s ease}
+.fa-kv span.hot{background:var(--amber-soft)}
+.fa-pathline{font-family:var(--f-mono);font-size:13px;line-height:1.9;overflow-wrap:anywhere}
+.fa-tok{border-radius:4px;padding:1px 4px;white-space:nowrap}
+.fa-tok.ph{background:var(--amber-soft);color:var(--amber)}
+.fa-tok.val{background:var(--green-soft);color:var(--green)}
+.fa-tok.val.pop{animation:faPop .5s ease}
+@keyframes faPop{0%{transform:scale(.85);opacity:.3}60%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.fa-found{font-size:12px;color:var(--green);margin-top:4px;min-height:1.2em}
+.fa-sheet{width:100%;min-width:0;border-collapse:collapse;font-family:var(--f-mono);font-size:12px;margin-bottom:10px}
+.fa-sheet th,.fa-sheet td{border:1px solid var(--line);padding:3px 6px;text-align:left;background:var(--surface)}
+.fa-sheet th{background:var(--accent-soft);color:var(--accent);font-weight:500;text-transform:none;letter-spacing:0;font-size:12px}
+.fa-sheet .drop{color:var(--muted);text-decoration:line-through;transition:color .3s}
+.fa-sheet .drop.live{text-decoration:none}
+.fa-tabname{font-size:11px;color:var(--muted);margin:-4px 0 6px}
+.fa-map{display:grid;gap:4px;font-size:12px}
+.fa-maprow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.3fr) 18px;gap:6px;align-items:center;padding:3px 6px;border-radius:5px;background:var(--surface);border:1px solid var(--line);transition:background .3s ease,opacity .3s}
+.fa-maprow code{font-size:11px}
+.fa-maprow .st{font-weight:700;text-align:center}
+.fa-maprow.ok{background:var(--green-soft)}
+.fa-maprow.ok .st{color:var(--green)}
+.fa-maprow.no{background:var(--amber-soft)}
+.fa-maprow.no .st{color:var(--amber)}
+.fa-out{font-family:var(--f-mono);font-size:12px;overflow-wrap:anywhere;line-height:1.7}
+.fa-file{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:6px 10px;border-radius:6px;border:1px dashed var(--line);font-family:var(--f-mono);font-size:12px;color:var(--muted);transition:all .35s ease}
+.fa-file.saved{border-style:solid;border-color:var(--green);background:var(--green-soft);color:var(--green)}
+.fa-caption{font-size:15px;min-height:3em;border-left:3px solid var(--accent);padding:6px 12px;background:var(--accent-soft);border-radius:0 6px 6px 0}
+.fa-caption b{color:var(--accent)}
+.fa-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.fa-controls button{appearance:none;font:inherit;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer}
+.fa-controls button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.fa-controls button:disabled{opacity:.4;cursor:not-allowed}
+.fa-controls button.play{background:var(--accent);border-color:var(--accent);color:var(--surface);min-width:88px}
+.fa-controls button:focus-visible,.fa-dots button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fa-dots{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.fa-dots button{appearance:none;width:12px;height:12px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;padding:0;cursor:pointer}
+.fa-dots button.past{background:var(--accent-soft)}
+.fa-dots button.cur{background:var(--accent)}
+.fa-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.editing .flow-anim :is(td,th,p,li){box-shadow:none!important}
+@media (max-width:860px){.fa-grid,.fa-grid2{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){.fa-card,.fa-line,.fa-kv span,.fa-maprow,.fa-file{transition:none}.fa-tok.val.pop,.fa-live.on i,.fa-submit.click{animation:none}.fa-fly{display:none}}
+</style>
+</head><body><header class="top gut"><div class="inner">
+  <p class="eyebrow">GPMS · Source data import</p>
+  <h1>GPMS Extract Guide</h1>
+  <p class="lede">How choosing the table group <code>GPMS</code> imports the GPMS extracts, Bloomberg data and reference lists into standard tables, ready for the enrichment steps.</p>
+</div></header>
+
+<div class="tabbar gut"><div class="inner tabs" role="tablist" aria-label="Guide views">
+  <button class="tab" role="tab" id="tab-business" aria-controls="business" aria-selected="true">How it works<small>For business users</small></button>
+  <button class="tab" role="tab" id="tab-technical" aria-controls="technical" aria-selected="false" tabindex="-1">Workbook reference<small>For maintainers and developers</small></button>
+</div></div>
+
+<!-- ===================== HOW IT WORKS ===================== -->
+<div class="gut" role="tabpanel" id="business" aria-labelledby="tab-business"><div class="inner panelwrap">
+<nav class="index" aria-label="How it works contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#b-idea">The idea</a></li>
+    <li><a href="#b-run">Two choices start a run</a></li>
+    <li><a href="#b-anim">Watch a GPMS import</a></li>
+    <li><a href="#b-what">What the GPMS group contains</a></li>
+    <li><a href="#b-types">Kinds of column</a></li>
+    <li><a href="#b-glossary">Glossary</a></li>
+  </ol>
+</nav>
+<main>
+<section id="b-idea">
+  <h2>The idea</h2>
+  <p><b>GPMS</b> is the system where the investment portfolio is managed and booked. Each period it delivers its data as a set of files: accounting extracts, master data about each security, exchange rates. Bloomberg data and a few reference lists kept in Excel come with them.</p>
+  <p>All of these are described in one metadata workbook, <code>01_Metadata_Import_Source_Files.xlsx</code>. Its control sheet lists every import, and each line carries a <b>table group</b>. The lines of the GPMS group are marked <code>GPMS</code>.</p>
+  <div class="oneliner"><b>In one line:</b> run the import with the table group GPMS, and every GPMS file of that period is read, checked against its template and turned into a table, ready for the enrichment steps.</div>
+</section>
+
+<section id="b-run">
+  <h2>Two choices start a run</h2>
+  <div class="cols2">
+    <div class="panel"><h3>Reporting date</h3><p>Which period to import. The date is filled into the file names, so the run finds this period's files, for example the extracts of 30 September 2026.</p></div>
+    <div class="panel"><h3>Table group</h3><p>Which lines of the control sheet to run. With <code>GPMS</code>, only the 29 GPMS lines are imported; lines of other groups are left alone.</p></div>
+  </div>
+  <div class="pipe" style="margin-top:20px">
+    <div class="stage"><div class="rail"><div class="dot">1</div></div><div class="body"><h3>Select the GPMS lines</h3><p>From the control sheet <code>List_Of_Tables</code>, keep the lines whose table group is GPMS.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">2</div></div><div class="body"><h3>Find each file</h3><p>Fill the reporting date into the file name and look in the GPMS folder of the period. Most names end in <code>*</code>, so the end of the name may vary.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">3</div></div><div class="body"><h3>Read it with its template</h3><p>Read the file as CSV (separator <code>;</code>), pipe-separated text or Excel, and use the matching schema sheet to give each column its name and type, with the date format on the line.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">4</div></div><div class="body"><h3>Hand over to enrichment</h3><p>The typed tables are passed on, each under its table name, to the enrichment steps that follow.</p></div></div>
+  </div>
+</section>
+
+<section id="b-anim">
+  <h2>Watch a GPMS import</h2>
+  <p>This follows one real line of the GPMS group, the Local GAAP transaction prices, from the two run choices to a table ready for enrichment. It plays by itself when it comes into view.</p>
+  <div class="flow-anim" data-anim="gpms" aria-label="Animated walk-through of a GPMS import"></div>
+  <p class="note">The table, file pattern, date format and columns are real entries from the workbook. The period folder and the date written as 20260930 are examples.</p>
+</section>
+
+<section id="b-what">
+  <h2>What the GPMS group contains</h2>
+  <p>29 lines with 620 columns in total, in four families.</p>
+  <div class="boxes" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <div class="box"><span class="code-big">20</span><span class="what">GPMS accounting extracts</span><p>Ten kinds of extract, each once for the Local GAAP books and once for IFRS 9: account movements, holding periods, transaction prices, new trades, repos, closed repos, cash movements, stock transfer reasons, intragroup fields and first-issue internal ratings.</p><div class="meter">CSV files</div></div>
+    <div class="box"><span class="code-big">2</span><span class="what">GPMS master data</span><p><code>GPMS_SIGNALETIQUE</code>: the description of every security, with 206 columns. <code>GPMS_RATES</code>: exchange rates per currency and provider.</p><div class="meter">CSV files with decimal commas</div></div>
+    <div class="box"><span class="code-big">3</span><span class="what">Bloomberg data</span><p>Security data from Bloomberg for the reporting date and the day after (ISIN, country of risk, coupon, maturity, issuer …), plus a list of manual exceptions.</p><div class="meter">Pipe-separated files and Excel</div></div>
+    <div class="box"><span class="code-big">4</span><span class="what">Reference lists</span><p>Account class types, the not-linked-to-EL list, opening positions and an HBIM database export.</p><div class="meter">Excel files</div></div>
+  </div>
+  <p class="note">The Local GAAP and IFRS 9 version of each extract have exactly the same columns, and so do the two Bloomberg day files.</p>
+</section>
+
+<section id="b-types">
+  <h2>Kinds of column</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Type in the schema</th><th>What it means</th><th>Columns</th></tr></thead>
+    <tbody>
+      <tr><td><b>Character</b></td><td>Text: names, codes, ISINs</td><td>332</td></tr>
+      <tr><td><b>Date</b></td><td>A date, read with the date format of the line (mostly day/month/year)</td><td>78</td></tr>
+      <tr><td><b>Amount</b></td><td>A number with decimals</td><td>69</td></tr>
+      <tr><td><b>Integer</b></td><td>A whole number</td><td>60</td></tr>
+      <tr><td><b>AmountComma</b></td><td>A number written with a decimal comma, such as 1,0863</td><td>47</td></tr>
+      <tr><td><b>Datetime</b></td><td>A date with a time</td><td>30</td></tr>
+      <tr><td><b>Numeric</b></td><td>A number</td><td>4</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="b-glossary">
+  <h2>Glossary</h2>
+  <label for="gq" style="display:block;color:var(--muted)">Search a term</label>
+  <input id="gq" class="gsearch" type="search" placeholder="e.g. table group, signaletique" autocomplete="off">
+  <dl class="gloss" id="gl">
+    <dt>GPMS</dt><dd>The system in which the investment portfolio is managed and booked.</dd>
+    <dt>Table group</dt><dd>A label on each line of the control sheet. Choosing a group at the start of a run imports only its lines.</dd>
+    <dt>Control sheet</dt><dd>The <code>List_Of_Tables</code> sheet: one line per import.</dd>
+    <dt>Schema sheet</dt><dd>The template of one table: its columns and their types, on a sheet named like the table.</dd>
+    <dt>Signaletique</dt><dd>French for the descriptive data of a security: issuer, currency, dates, categories.</dd>
+    <dt>Local GAAP</dt><dd>Belgian accounting rules, used for the statutory accounts.</dd>
+    <dt>IFRS 9</dt><dd>The international accounting rule for financial investments, used in group reporting.</dd>
+    <dt>Repo</dt><dd>Repurchase agreement: selling a security with an agreement to buy it back later, in effect a secured loan.</dd>
+    <dt>CSV / pipe file</dt><dd>Text files with one row per line, the values separated by a separator character; a pipe file uses <code>|</code>.</dd>
+    <dt>Wildcard</dt><dd>The <code>*</code> in a file name pattern, meaning "anything may follow here".</dd>
+    <dt>Enrichment</dt><dd>The steps after the import that add classifications and other information to the tables.</dd>
+  </dl>
+  <p class="empty" id="ge" hidden>No term matches that search.</p>
+  <p class="crosslink">Interested in the details? <button type="button" data-go="technical">Open the workbook reference.</button></p>
+</section>
+</main>
+</div></div>
+
+<!-- ===================== WORKBOOK REFERENCE ===================== -->
+<div class="gut" role="tabpanel" id="technical" aria-labelledby="tab-technical" hidden><div class="inner panelwrap">
+<nav class="index" aria-label="Reference contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#t-run">How a GPMS run works</a></li>
+    <li><a href="#t-readers">The readers</a></li>
+    <li><a href="#t-types">Type labels</a></li>
+    <li><a href="#t-inventory">All GPMS tables</a></li>
+    <li><a href="#t-checklist">Adding a GPMS file</a></li>
+  </ol>
+</nav>
+<main>
+<section id="t-run">
+  <h2>How a GPMS run works</h2>
+  <p><code>import_sources(source_group, meta_source, run_parameters)</code> is called with <code>source_group = "GPMS"</code>.</p>
+  <div class="pipe">
+    <div class="stage"><div class="rail"><div class="dot">1</div></div><div class="body"><h3>Read and filter the control sheet</h3><p>Reads <code>List_Of_Tables</code> from the metadata workbook in the <code>ref</code> layer and keeps the rows with <code>TABLE_GROUP == "GPMS"</code>.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">2</div></div><div class="body"><h3>Fill the path</h3><p><code>TABLE_SOURCE_PATH.format(**run_parameters)</code> replaces every <code>{name}</code> with the run parameter of the same name.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">3</div></div><div class="body"><h3>Find the file</h3><p><code>find_matching_file(folder, name)</code> resolves the <code>*</code>. If no file is found, the row is reported as "File does not exist" and skipped; the other rows continue.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">4</div></div><div class="body"><h3>Read it</h3><p>Depending on <code>IMPORT_FILE_IMPORT_METHOD</code>, the file goes to <code>import_structured_csv</code>, <code>import_structured_xlsx</code> or the named function.</p></div></div>
+    <div class="stage"><div class="rail"><div class="dot">5</div></div><div class="body"><h3>Return the tables</h3><p>Each result is stored under its <code>TABLE_NAME</code> in a dictionary of DataFrames, which is returned to the enrichment steps.</p></div></div>
+  </div>
+<pre>list_of_sources = list_of_sources.filter(F.col(<span class="k">"TABLE_GROUP"</span>) == source_group).collect()
+
+<span class="k">for</span> src <span class="k">in</span> list_of_sources:
+    src_file = src[<span class="k">"TABLE_SOURCE_PATH"</span>].format(**run_parameters)
+    src_file = find_matching_file(src_file_directory, src_file_name)
+    ...
+    dicts[src[<span class="k">"TABLE_NAME"</span>]] = imported_src
+
+<span class="k">return</span> dicts        <span class="c"># {"ACCOUNT_LGAAP": df, "TRANSACTION_PRICE_LOCAL": df, …}</span></pre>
+</section>
+
+<section id="t-readers">
+  <h2>The readers</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Method</th><th>GPMS rows</th><th>Reader</th><th>How columns are matched</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">CSV</td><td>22</td><td><code>import_structured_csv</code>, separator <code>;</code></td><td rowspan="2">By position: <code>spark.read.csv</code> with <code>header=True</code> and the schema, so the schema rows must be in the same order as the file columns. Dates use <code>SOURCE_DATE_FORMAT</code>, date-times <code>SOURCE_DATETIME_FORMAT</code>.</td></tr>
+      <tr><td class="mono">PIPE</td><td>2</td><td><code>import_structured_csv</code>, separator <code>|</code></td></tr>
+      <tr><td class="mono">EXCEL</td><td>5</td><td><code>import_structured_xlsx</code>, sheet from <code>IMPORT_FILE_EXCEL_SHEET</code></td><td>By name: only columns present in both file and schema are kept, missing ones become null, names are upper-cased. Blank rows are removed. If the Excel connector fails, the file is read with pandas, with a case-insensitive sheet lookup.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><code>TAB</code> (separator tab) and <code>FUNCTION</code> are also supported by <code>import_sources</code>; the GPMS group does not use them.</p>
+</section>
+
+<section id="t-types">
+  <h2>Type labels</h2>
+  <p>The <code>Column_Type</code> of each schema row is mapped to a Spark type by the reader.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Column_Type</th><th>Columns</th><th>CSV / PIPE</th><th>EXCEL</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Character</td><td>332</td><td class="mono">StringType</td><td class="mono">StringType</td></tr>
+      <tr><td class="mono">Date</td><td>78</td><td class="mono">DateType</td><td class="mono">DateType</td></tr>
+      <tr><td class="mono">Amount</td><td>69</td><td>read as text, <code>,</code> removed (thousand separators), cast to double</td><td class="mono">DoubleType</td></tr>
+      <tr><td class="mono">Integer</td><td>60</td><td class="mono">IntegerType</td><td class="mono">IntegerType</td></tr>
+      <tr><td class="mono">AmountComma</td><td>47</td><td>read as text, <code>,</code> replaced by <code>.</code> (decimal comma), cast to double</td><td>&mdash;</td></tr>
+      <tr><td class="mono">Datetime</td><td>30</td><td class="mono">TimestampType</td><td>&mdash;</td></tr>
+      <tr><td class="mono">Numeric</td><td>4</td><td class="mono">DoubleType</td><td class="mono">DoubleType</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><code>Percentage</code> (DoubleType) is also available in both readers.</p>
+</section>
+
+<section id="t-inventory">
+  <h2>All GPMS tables</h2>
+  <div class="tbl"><table class="inv2"><thead><tr><th>TABLE_NAME</th><th>Method</th><th>File (in GPMS folder)</th><th>Date format</th><th>Columns</th></tr></thead><tbody><tr class="grp"><td colspan="5"><b>GPMS accounting extracts</b></td></tr><tr><td class="mono">ACCOUNT_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-AccountV6-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>13</td></tr><tr><td class="mono">HOLDING_PERIOD_LOCAL</td><td>CSV</td><td class="mono">ExtractSAS-HoldingPeriod-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>5</td></tr><tr><td class="mono">TRANSACTION_PRICE_LOCAL</td><td>CSV</td><td class="mono">ExtractSAS-TransactionPricev2-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>11</td></tr><tr><td class="mono">ACCOUNT_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-AccountV6-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>13</td></tr><tr><td class="mono">HOLDING_PERIOD_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-HoldingPeriod-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>5</td></tr><tr><td class="mono">TRANSACTION_PRICE_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-TransactionPricev2-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>11</td></tr><tr><td class="mono">NEWTRADES_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueTradesNewv23-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>29</td></tr><tr><td class="mono">NEWTRADES_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueTradesNewv23-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>29</td></tr><tr><td class="mono">REPOS_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-SignaltiqueRepos-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>17</td></tr><tr><td class="mono">ClOSED_REPOS_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueClosedRepos-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>17</td></tr><tr><td class="mono">REPOS_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueRepos-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>17</td></tr><tr><td class="mono">ClOSED_REPOS_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueClosedRepos-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>17</td></tr><tr><td class="mono">CASHMVT_LOCAL</td><td>CSV</td><td class="mono">ExtractSAS-SignaltiqueCashMvt-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>14</td></tr><tr><td class="mono">CASHMVT_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-SignaletiqueCashMvt-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>14</td></tr><tr><td class="mono">STOCKTRANSFER_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-StockTransferReason-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>8</td></tr><tr><td class="mono">STOCKTRANSFER_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-StockTransferReason-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>8</td></tr><tr><td class="mono">INTRAGROUP_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-IntragroupField-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>7</td></tr><tr><td class="mono">INTRAGROUP_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-IntragroupField-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>7</td></tr><tr><td class="mono">FIRST_ISSUE_INTERN_RATING_IFRS</td><td>CSV</td><td class="mono">ExtractSAS-FirstIssueInternalRatingV3-IFRS9-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>11</td></tr><tr><td class="mono">FIRST_ISSUE_INTERN_RATING_LGAAP</td><td>CSV</td><td class="mono">ExtractSAS-FirstIssueInternalRatingV3-Local-<span class="tk">{thisrun_date_GPMS}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>11</td></tr><tr class="grp"><td colspan="5"><b>GPMS master data</b></td></tr><tr><td class="mono">GPMS_RATES</td><td>CSV</td><td class="mono">Gpms-Rates*</td><td class="mono">d/M/yyyy / dd/MM/yyyy HH:mm:SS</td><td>5</td></tr><tr><td class="mono">GPMS_SIGNALETIQUE</td><td>CSV</td><td class="mono">GPMS-Signaletique*</td><td class="mono">d/M/yyyy / dd/MM/yyyy HH:mm:SS</td><td>206</td></tr><tr class="grp"><td colspan="5"><b>Bloomberg data</b></td></tr><tr><td class="mono">BLOOMBERG_EXCEPTIONS</td><td>EXCEL</td><td class="mono">Exceptionlist Bloomberg.xlsx · sheet <code>Sheet1</code></td><td class="mono">&mdash;</td><td>4</td></tr><tr><td class="mono">BLOOMBERG_DAY1</td><td>PIPE</td><td class="mono">1-<span class="tk">{thisrun_reporting_date_num}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>50</td></tr><tr><td class="mono">BLOOMBERG_DAY2</td><td>PIPE</td><td class="mono">1-<span class="tk">{thisrun_reporting_date_num_plus_1}</span>-*</td><td class="mono">dd/MM/yyyy</td><td>50</td></tr><tr class="grp"><td colspan="5"><b>Reference lists</b></td></tr><tr><td class="mono">GPMS_ACCOUNT_CLASS_TYPE</td><td>EXCEL</td><td class="mono">GPMS_ACCOUNT_CLASS_TYPE_V4.xlsx · sheet <code>Sheet1</code></td><td class="mono">&mdash;</td><td>11</td></tr><tr><td class="mono">GPMS_NOT_LINKED_TO_EL</td><td>EXCEL</td><td class="mono">GPMS_NOT_LINKED_TO_EL.xlsx · sheet <code>Sheet1</code></td><td class="mono">&mdash;</td><td>7</td></tr><tr><td class="mono">GPMS_OPENING</td><td>EXCEL</td><td class="mono">GPMS_OPENING_2025I9LG.xlsx · sheet <code>Sheet1</code></td><td class="mono">&mdash;</td><td>12</td></tr><tr><td class="mono">HBIM_DBCOMP_EXPORT_GPMS</td><td>EXCEL</td><td class="mono">HBIM_DBCOMP_EXPORT_GPMS_FULL.xlsx · sheet <code>Sheet1</code></td><td class="mono">&mdash;</td><td>11</td></tr></tbody></table></div>
+</section>
+
+<section id="t-checklist">
+  <h2>Adding a GPMS file</h2>
+  <div class="panel"><ul>
+    <li>Add a row to <code>List_Of_Tables</code> with <code>TABLE_GROUP</code> = <code>GPMS</code> and a unique <code>TABLE_NAME</code></li>
+    <li>Set <code>IMPORT_FILE_IMPORT_METHOD</code>: <code>CSV</code>, <code>PIPE</code>, <code>TAB</code> or <code>EXCEL</code> (with <code>IMPORT_FILE_EXCEL_SHEET</code>)</li>
+    <li>Write <code>TABLE_SOURCE_PATH</code> with run-parameter placeholders in braces and <code>*</code> where the name varies</li>
+    <li>For text files, fill <code>SOURCE_DATE_FORMAT</code> and, if needed, <code>SOURCE_DATETIME_FORMAT</code></li>
+    <li>Add a schema sheet named exactly like the table, with <code>Column_Name</code> and <code>Column_Type</code>; for text files, list the columns in file order</li>
+  </ul></div>
+  <p class="crosslink">Plain-language version: <button type="button" data-go="business">Open "How it works".</button></p>
+</section>
+</main>
+</div></div>
+
+<footer class="ver gut" id="page-version" data-version="4" data-saved="2026-11-06T12:35"><div class="inner">
+  <p class="ver-now">Version <span id="ver-num">4</span> &middot; saved <span id="ver-date">6 November 2026, 12:35</span></p>
+  <details class="ver-log"><summary>Version history</summary>
+    <ol id="ver-log" reversed>
+      <li><b>Version 4</b> &middot; 6 November 2026, 12:35 &middot; Workbook reference simplified and aligned with the import code</li>
+      <li><b>Version 3</b> &middot; 6 November 2026, 12:25 &middot; Rebuilt from 01_Metadata_Import_Source_Files.xlsx: the GPMS table group, run by reporting date and table group</li>
+      <li><b>Version 2</b> &middot; 6 November 2026, 12:10 &middot; Animation shows only the reporting date as run choice</li>
+      <li><b>Version 1</b> &middot; 6 November 2026, 12:05 &middot; First version, from the SAS layout workbook</li>
+    </ol>
+  </details>
+</div></footer>
+
+
+
+<script data-page="tabs">
+(function(){
+  var tabs={business:document.getElementById('tab-business'),technical:document.getElementById('tab-technical')};
+  var panels={business:document.getElementById('business'),technical:document.getElementById('technical')};
+  var sectionTab=function(id){var el=document.getElementById(id);if(!el)return null;var p=el.closest('[role="tabpanel"]');return p?p.id:null;};
+  function show(name,focus){
+    Object.keys(tabs).forEach(function(k){
+      var on=k===name;
+      tabs[k].setAttribute('aria-selected',on?'true':'false');
+      tabs[k].tabIndex=on?0:-1;
+      panels[k].hidden=!on;
+    });
+    if(focus)tabs[name].focus();
+  }
+  function route(){
+    var h=(location.hash||'').slice(1);
+    if(h==='business'||h==='technical'){show(h);window.scrollTo(0,0);return;}
+    var t=h?sectionTab(h):null;
+    if(t){show(t);var el=document.getElementById(h);if(el)el.scrollIntoView();}
+    else show('business');
+  }
+  Object.keys(tabs).forEach(function(k){
+    tabs[k].addEventListener('click',function(){
+      if(location.hash!=='#'+k){location.hash=k;}else{show(k);}
+    });
+    tabs[k].addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+        var n=k==='business'?'technical':'business';
+        location.hash=n; show(n,true); e.preventDefault();
+      }
+    });
+  });
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-go]');
+    if(b&&!document.documentElement.classList.contains('editing'))location.hash=b.getAttribute('data-go');
+  });
+  window.addEventListener('hashchange',route);
+  window.__showTab=show;
+  route();
+
+  document.addEventListener('input',function(e){
+    if(!e.target||e.target.id!=='gq')return;
+    var t=e.target.value.trim().toLowerCase(),n=0;
+    var dl=document.getElementById('gl'),empty=document.getElementById('ge');
+    [].slice.call(dl.querySelectorAll('dt')).forEach(function(dt){
+      var dd=dt.nextElementSibling;
+      var hit=!t||(dt.textContent+' '+(dd?dd.textContent:'')).toLowerCase().indexOf(t)>-1;
+      dt.hidden=!hit;if(dd)dd.hidden=!hit;if(hit)n++;
+    });
+    empty.hidden=n>0;
+  });
+})();
+</script>
+
+<style data-page="editor">
+.ed-bar{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);font-size:14px}
+.ed-bar button{appearance:none;font:inherit;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:7px 12px;cursor:pointer;white-space:nowrap}
+.ed-bar button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.ed-bar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ed-bar button:disabled{opacity:.45;cursor:not-allowed}
+.ed-bar button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.ed-bar button.primary:hover{color:var(--surface);opacity:.9}
+.ed-bar button.danger{color:var(--amber);border-color:var(--amber)}
+.ver{border-top:1px solid var(--line);padding-block:20px 96px;color:var(--muted);font-size:13px}
+.ver p{margin:0}
+.ver-log{margin-top:8px}
+.ver-log summary{cursor:pointer;color:var(--accent)}
+.ver-log ol{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
+.ver-log b{color:var(--ink);font-weight:600}
+.ver-note{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+.ver-note input{flex:1 1 220px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.ver-note input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ver-note label{font-size:12px;color:var(--muted);width:100%}
+.img-box{display:grid;gap:8px;width:min(460px,100%)}
+.img-box .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.img-box label{font-size:12px;color:var(--muted)}
+.img-box input[type=text]{flex:1 1 200px;min-width:0;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.img-box input[type=file]{font:inherit;font-size:13px;max-width:100%;color:var(--ink)}
+.img-box .or{font-size:12px;color:var(--muted);text-align:center}
+.img-box .preview{max-height:120px;max-width:100%;border:1px solid var(--line);border-radius:6px;justify-self:start}
+figure.guide-figure{margin:18px 0 0;max-width:100%}
+figure.guide-figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+figure.guide-figure figcaption{font-size:13px;color:var(--muted);margin-top:6px;max-width:66ch}
+.editing figure.guide-figure img{cursor:pointer}
+.editing figure.ed-img-current img{outline:3px solid var(--accent);outline-offset:2px}
+.ed-bar .ed-status{align-self:center;color:var(--muted);font-size:12px;padding:0 6px}
+.ed-bar .ed-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:6px;vertical-align:middle}
+.ed-help{background:var(--amber-soft);color:var(--ink);border-bottom:1px solid var(--line);font-size:14px;padding-block:8px}
+.ed-help b{color:var(--amber)}
+.ed-draft{background:var(--accent-soft);border-bottom:1px solid var(--line);padding-block:10px;font-size:14px}
+.ed-draft .inner{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ed-draft button{appearance:none;font:inherit;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:6px;padding:5px 10px;cursor:pointer}
+.ed-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:21;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.2)}
+.editing [contenteditable="true"]{outline:none}
+.editing [contenteditable="true"] :is(h1,h2,h3,p,li,td,th,dt,dd,pre,.example,.oneliner,.warn,.note,.panel,.node,.box):hover{box-shadow:inset 0 0 0 1px var(--accent);border-radius:3px}
+.editing [contenteditable="true"] :focus{outline:none}
+.editing section.ed-current{background:var(--accent-soft);border-radius:8px;box-shadow:0 0 0 8px var(--accent-soft)}
+.editing nav.index a{cursor:text}
+@media print{.ed-bar,.ed-help,.ed-draft,.ed-toast{display:none!important}}
+</style>
+
+<script data-page="editor">
+(function(){
+  var root=document.documentElement;
+  var DRAFT_KEY='gpmsExtractGuide.draft.v1';
+  var dirty=false, editing=false, currentSection=null, currentRow=null, confirmTimer=null;
+
+  function regions(){
+    return [].slice.call(document.querySelectorAll('header.top .inner, #business .panelwrap main, #technical .panelwrap main, #business nav.index ol, #technical nav.index ol'));
+  }
+  function activePanel(){ return document.querySelector('[role="tabpanel"]:not([hidden])'); }
+
+  /* ---------- toolbar ---------- */
+  var bar=document.createElement('div');
+  bar.className='ed-bar'; bar.setAttribute('role','toolbar'); bar.setAttribute('aria-label','Page editing');
+  bar.setAttribute('data-editor-ui','');
+  document.body.appendChild(bar);
+
+  var help=document.createElement('div');
+  help.className='ed-help gut'; help.hidden=true; help.setAttribute('data-editor-ui','');
+  help.innerHTML='<div class="inner"><b>Editing.</b> Click any text and type. Ctrl+B for bold, Ctrl+Z to undo. Click inside a table to add or remove rows. To add a picture, click the paragraph it should follow and use <b>Add image</b>, or paste a screenshot with Ctrl+V. When finished, click <b>Save new version</b>: it downloads a numbered copy and records it in the version history at the bottom.</div>';
+  var tabbar=document.querySelector('.tabbar');
+  tabbar.parentNode.insertBefore(help,tabbar.nextSibling);
+
+  function btn(label,cls,fn,title){
+    var b=document.createElement('button'); b.type='button'; b.textContent=label;
+    if(cls)b.className=cls; if(title)b.title=title;
+    b.addEventListener('mousedown',function(e){e.preventDefault();}); // keep caret where it is
+    b.addEventListener('click',fn); return b;
+  }
+  var status=document.createElement('span'); status.className='ed-status';
+  var bEdit=btn('Edit page','primary',startEdit,'Turn on editing');
+  var bSection=btn('Add section','',addSection,'Add a new section after the highlighted one');
+  var bRemoveSection=btn('Remove section','danger',removeSection,'Remove the highlighted section');
+  var bRow=btn('Add row','',addRow,'Add a row below the one you clicked');
+  var bRemoveRow=btn('Remove row','danger',removeRow,'Remove the row you clicked');
+  var bTerm=btn('Add glossary term','',addTerm,'Add a term to the glossary');
+  var bImage=btn('Add image','',openImageBox,'Insert an image below the paragraph you clicked');
+  var bRemoveImage=btn('Remove image','danger',removeImage,'Remove the image you clicked');
+  var bSave=btn('Save new version','primary',saveCopy,'Download the updated page as a new numbered version');
+  var bDone=btn('Done','',stopEdit,'Stop editing');
+
+  function render(){
+    bar.innerHTML='';
+    status.innerHTML=dirty?'<span class="ed-dot"></span>Unsaved changes':'';
+    if(askingNote){
+      bar.appendChild(noteBox);
+    }else if(askingImg){
+      bar.appendChild(imgBox);
+    }else if(!editing){
+      if(dirty){bar.appendChild(status);bar.appendChild(bSave);}
+      bar.appendChild(bEdit);
+    }else{
+      [status,bSection,bRemoveSection,bRow,bRemoveRow,bTerm,bImage].forEach(function(b){bar.appendChild(b);});
+      if(currentImg)bar.appendChild(bRemoveImage);
+      [bSave,bDone].forEach(function(b){bar.appendChild(b);});
+      bRemoveSection.disabled=!currentSection;
+      bRow.disabled=!currentRow;
+      bRemoveRow.disabled=!currentRow||currentRow.parentNode.rows.length<2;
+    }
+    resetConfirm();
+  }
+
+  function resetConfirm(){
+    clearTimeout(confirmTimer);
+    bRemoveSection.textContent='Remove section'; bRemoveSection.dataset.armed='';
+  }
+
+  function toast(msg){
+    var t=document.createElement('div'); t.className='ed-toast'; t.setAttribute('role','status');
+    t.setAttribute('data-editor-ui',''); t.textContent=msg; document.body.appendChild(t);
+    setTimeout(function(){t.remove();},5000);
+  }
+
+  /* ---------- edit mode ---------- */
+  function startEdit(){
+    editing=true; root.classList.add('editing'); help.hidden=false;
+    regions().forEach(function(r){r.setAttribute('contenteditable','true');r.setAttribute('spellcheck','true');});
+    var gq=document.getElementById('gq'); if(gq){gq.value='';gq.dispatchEvent(new Event('input',{bubbles:true}));}
+    render();
+  }
+  function stopEdit(){
+    editing=false; root.classList.remove('editing'); help.hidden=true;
+    regions().forEach(function(r){r.removeAttribute('contenteditable');r.removeAttribute('spellcheck');});
+    setCurrent(null,null); render();
+  }
+
+  function setCurrent(sec,row){
+    if(currentSection&&currentSection!==sec)currentSection.classList.remove('ed-current');
+    currentSection=sec; currentRow=row;
+    if(sec)sec.classList.add('ed-current');
+    if(editing)render();
+  }
+  function trackCaret(){
+    if(!editing)return;
+    var s=window.getSelection(); if(!s||!s.rangeCount)return;
+    var n=s.anchorNode; if(n&&n.nodeType===3)n=n.parentNode;
+    if(!n||!n.closest)return;
+    if(!n.closest('[contenteditable="true"]'))return;
+    var sec=n.closest('main section'); var tr=n.closest('tbody tr');
+    if(sec){var blk=n; while(blk&&blk.parentNode!==sec)blk=blk.parentNode; lastBlock=blk||null;}
+    setCurrent(sec,tr);
+  }
+  document.addEventListener('selectionchange',trackCaret);
+
+  /* links inside editable areas should not navigate while editing */
+  document.addEventListener('click',function(e){
+    if(!editing)return;
+    var a=e.target.closest&&e.target.closest('[contenteditable="true"] a');
+    if(a){e.preventDefault();}
+  },true);
+
+  /* clicking an image selects it, so it can be removed */
+  document.addEventListener('click',function(e){
+    if(!editing||askingImg||(e.target.closest&&e.target.closest('.ed-bar')))return;
+    var fig=e.target.closest&&e.target.closest('[contenteditable="true"] figure.guide-figure');
+    var onImg=fig&&e.target.tagName==='IMG';
+    if(currentImg&&currentImg!==fig)currentImg.classList.remove('ed-img-current');
+    currentImg=onImg?fig:null;
+    if(currentImg){currentImg.classList.add('ed-img-current');var sec=fig.closest('main section');if(sec){var blk=fig;while(blk&&blk.parentNode!==sec)blk=blk.parentNode;lastBlock=blk;setCurrent(sec,null);return;}}
+    render();
+  });
+
+  /* paste as plain text, so Word/Excel formatting does not break the page;
+     a pasted screenshot or image file is inserted as an image */
+  document.addEventListener('paste',function(e){
+    if(!editing||!e.target.closest||!e.target.closest('[contenteditable="true"]'))return;
+    var cd=e.clipboardData||window.clipboardData;
+    var imgFile=cd&&cd.files&&[].slice.call(cd.files).filter(function(f){return /^image\//.test(f.type);})[0];
+    if(imgFile){e.preventDefault(); fileToSrc(imgFile).then(function(src){insertFigure(src,'',imgFile.name&&imgFile.name!=='image.png'?imgFile.name:'Pasted image');}).catch(function(){toast('That image could not be read. Try saving it as PNG or JPG first.');}); return;}
+    var text=(e.clipboardData||window.clipboardData).getData('text/plain');
+    if(text==null)return;
+    e.preventDefault();
+    if(!document.execCommand('insertText',false,text)){
+      var s=window.getSelection(); if(!s.rangeCount)return;
+      var r=s.getRangeAt(0); r.deleteContents(); r.insertNode(document.createTextNode(text)); r.collapse(false);
+    }
+  });
+
+  /* keep the contents list in sync with headings of sections added here */
+  document.addEventListener('input',function(e){
+    if(!editing||!e.target.closest||e.target.id==='gq')return;
+    if(e.target.closest('[contenteditable="true"]')){markDirty();}
+    var sec=currentSection; if(!sec)return;
+    var link=document.querySelector('nav.index a[data-sync][href="#'+sec.id+'"]');
+    var h=sec.querySelector('h2'); if(link&&h)link.textContent=h.textContent.trim()||'Untitled section';
+  });
+
+  function markDirty(){
+    if(!dirty){dirty=true;render();}
+    clearTimeout(markDirty.t); markDirty.t=setTimeout(saveDraft,800);
+  }
+
+  /* ---------- actions ---------- */
+  function addSection(){
+    var panel=activePanel(); var main=panel.querySelector('main'); var nav=panel.querySelector('nav.index ol');
+    var id='s-'+Date.now().toString(36);
+    var sec=document.createElement('section'); sec.id=id;
+    sec.innerHTML='<h2>New section</h2><p>Write the explanation here.</p>';
+    var after=currentSection&&main.contains(currentSection)?currentSection:null;
+    var glossary=main.querySelector('#b-glossary');
+    if(after&&after.id!=='b-glossary'){after.after(sec);} else if(glossary){main.insertBefore(sec,glossary);} else {main.appendChild(sec);}
+    var li=document.createElement('li'); li.innerHTML='<a href="#'+id+'" data-sync="1">New section</a>';
+    var afterLink=after?nav.querySelector('a[href="#'+after.id+'"]'):null;
+    var glossLink=nav.querySelector('a[href="#b-glossary"]');
+    if(afterLink&&after.id!=='b-glossary'){afterLink.parentNode.after(li);} else if(glossLink){nav.insertBefore(li,glossLink.parentNode);} else {nav.appendChild(li);}
+    sec.scrollIntoView({block:'center'});
+    selectContents(sec.querySelector('h2')); setCurrent(sec,null); markDirty();
+    toast('Section added. Type its heading, then its text.');
+  }
+
+  function removeSection(){
+    if(!currentSection)return;
+    if(bRemoveSection.dataset.armed!=='1'){
+      bRemoveSection.dataset.armed='1'; bRemoveSection.textContent='Click again to remove';
+      clearTimeout(confirmTimer); confirmTimer=setTimeout(resetConfirm,4000); return;
+    }
+    var sec=currentSection; var link=document.querySelector('nav.index a[href="#'+sec.id+'"]');
+    if(link)link.parentNode.remove();
+    sec.remove(); setCurrent(null,null); markDirty(); toast('Section removed. Ctrl+Z will not bring it back; close without saving to undo.');
+  }
+
+  function addRow(){
+    if(!currentRow)return;
+    var copy=currentRow.cloneNode(true);
+    [].slice.call(copy.cells).forEach(function(c){c.textContent='';});
+    copy.cells[0].textContent='New';
+    currentRow.after(copy); selectContents(copy.cells[0]); markDirty();
+  }
+  function removeRow(){
+    if(!currentRow||currentRow.parentNode.rows.length<2)return;
+    var next=currentRow.nextElementSibling||currentRow.previousElementSibling;
+    currentRow.remove(); currentRow=null;
+    if(next&&next.cells[0])selectContents(next.cells[0]);
+    markDirty(); render();
+  }
+
+  function addTerm(){
+    window.__showTab&&window.__showTab('business');
+    var dl=document.getElementById('gl');
+    var dt=document.createElement('dt'); dt.textContent='New term';
+    var dd=document.createElement('dd'); dd.textContent='What it means, in plain words.';
+    dl.appendChild(dt); dl.appendChild(dd);
+    dt.scrollIntoView({block:'center'}); selectContents(dt); markDirty();
+  }
+
+  function selectContents(el){
+    if(!el)return;
+    var r=document.createRange(); r.selectNodeContents(el);
+    var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    var host=el.closest('[contenteditable="true"]'); if(host)host.focus({preventScroll:true});
+  }
+
+  /* ---------- save a copy of the whole page ---------- */
+  function buildHtml(hook){
+    var clone=root.cloneNode(true);
+    if(hook)hook(clone);
+    clone.classList.remove('editing'); if(!clone.className)clone.removeAttribute('class');
+    clone.removeAttribute('data-theme');
+    [].slice.call(clone.querySelectorAll('[data-editor-ui]')).forEach(function(n){n.remove();});
+    [].slice.call(clone.querySelectorAll('[contenteditable]')).forEach(function(n){n.removeAttribute('contenteditable');n.removeAttribute('spellcheck');});
+    [].slice.call(clone.querySelectorAll('.ed-current,.ed-img-current')).forEach(function(n){n.classList.remove('ed-current','ed-img-current');if(!n.className)n.removeAttribute('class');});
+    /* drop anything a viewer injected; keep only this page's own scripts */
+    [].slice.call(clone.querySelectorAll('script')).forEach(function(s){
+      var own=s.hasAttribute('data-page')||/__showTab|tab-business/.test(s.textContent);
+      if(!own)s.remove();
+    });
+    [].slice.call(clone.querySelectorAll('meta[http-equiv]')).forEach(function(m){m.remove();});
+    /* reset view state: business tab open, glossary search cleared */
+    var tb=clone.querySelector('#tab-business'),tt=clone.querySelector('#tab-technical');
+    if(tb){tb.setAttribute('aria-selected','true');tb.removeAttribute('tabindex');}
+    if(tt){tt.setAttribute('aria-selected','false');tt.setAttribute('tabindex','-1');}
+    var pb=clone.querySelector('#business'),pt=clone.querySelector('#technical');
+    if(pb)pb.removeAttribute('hidden'); if(pt)pt.setAttribute('hidden','');
+    [].slice.call(clone.querySelectorAll('#gl dt,#gl dd')).forEach(function(n){n.removeAttribute('hidden');});
+    var ge=clone.querySelector('#ge'); if(ge)ge.setAttribute('hidden','');
+    var gq=clone.querySelector('#gq'); if(gq)gq.removeAttribute('value');
+    return '<!doctype html>\n'+clone.outerHTML;
+  }
+
+  /* ---------- images ---------- */
+  var lastBlock=null, currentImg=null, askingImg=false;
+  var imgBox=document.createElement('div'); imgBox.className='img-box';
+  imgBox.innerHTML=
+    '<label for="img-file">Choose an image from your computer (it is stored inside the page)</label>'+
+    '<input id="img-file" type="file" accept="image/*">'+
+    '<div class="or">or</div>'+
+    '<label for="img-url">Web address or file name next to the page, e.g. images/flow.png</label>'+
+    '<div class="row"><input id="img-url" type="text" placeholder="https://\u2026 or images/flow.png"></div>'+
+    '<img class="preview" alt="" hidden>'+
+    '<label for="img-cap">Caption (optional)</label>'+
+    '<div class="row"><input id="img-cap" type="text" maxlength="200" placeholder="e.g. Data enrichment flow"></div>'+
+    '<div class="row"></div>';
+  var imgFileIn=imgBox.querySelector('#img-file'), imgUrlIn=imgBox.querySelector('#img-url'), imgCapIn=imgBox.querySelector('#img-cap');
+  var imgPrev=imgBox.querySelector('.preview'), imgBtnRow=imgBox.lastElementChild, pendingSrc=null;
+  var bInsertImg=btn('Insert image','primary',insertFromBox,'Insert the image into the page');
+  var bCancelImg=btn('Cancel','',function(){askingImg=false;render();},'Back to editing');
+  imgBtnRow.appendChild(bInsertImg); imgBtnRow.appendChild(bCancelImg);
+  imgFileIn.addEventListener('change',function(){
+    var f=imgFileIn.files&&imgFileIn.files[0]; pendingSrc=null; imgPrev.hidden=true;
+    if(!f)return;
+    if(!/^image\//.test(f.type)){toast('Please choose an image file (PNG, JPG, GIF, SVG or WebP).');imgFileIn.value='';return;}
+    imgUrlIn.value='';
+    fileToSrc(f).then(function(src){pendingSrc=src;imgPrev.src=src;imgPrev.hidden=false;if(!imgCapIn.value)imgCapIn.value='';})
+      .catch(function(){toast('That image could not be read. Try saving it as PNG or JPG first.');});
+  });
+  imgUrlIn.addEventListener('input',function(){ if(imgUrlIn.value.trim()){pendingSrc=null;imgFileIn.value='';imgPrev.hidden=true;} });
+
+  function openImageBox(){
+    if(!currentSection&&!lastBlock){toast('First click in the paragraph the image should follow, then click Add image.');return;}
+    askingImg=true; pendingSrc=null; imgFileIn.value=''; imgUrlIn.value=''; imgCapIn.value=''; imgPrev.hidden=true; render();
+  }
+  function insertFromBox(){
+    var url=imgUrlIn.value.trim();
+    if(!pendingSrc&&!url){toast('Choose an image, or type its address.');return;}
+    if(url&&/^\s*javascript:/i.test(url)){toast('That address is not an image.');return;}
+    insertFigure(pendingSrc||url, imgCapIn.value.trim(), imgCapIn.value.trim()||'Image');
+    askingImg=false; render();
+  }
+  function insertFigure(src,caption,alt){
+    var sec=currentSection||(lastBlock&&lastBlock.closest('main section'));
+    if(!sec){toast('First click in the paragraph the image should follow.');return;}
+    var fig=document.createElement('figure'); fig.className='guide-figure';
+    var img=document.createElement('img'); img.src=src; img.alt=alt||''; img.loading='lazy';
+    fig.appendChild(img);
+    if(caption){var fc=document.createElement('figcaption'); fc.textContent=caption; fig.appendChild(fc);}
+    var anchor=(lastBlock&&lastBlock.parentNode===sec)?lastBlock:null;
+    if(anchor)anchor.after(fig); else sec.appendChild(fig);
+    img.addEventListener('error',function(){toast('The image did not load. Check the address or file name.');},{once:true});
+    lastBlock=fig; fig.scrollIntoView({block:'center'}); markDirty();
+    toast(src.indexOf('data:')===0?'Image added and stored inside the page.':'Image added. Keep that file at the same address so it keeps showing.');
+  }
+  function removeImage(){
+    if(!currentImg)return;
+    var f=currentImg; currentImg=null; lastBlock=f.previousElementSibling||null; f.remove(); markDirty(); render();
+    toast('Image removed.');
+  }
+  /* read an image file; large photos are scaled down so the page stays a manageable size */
+  function fileToSrc(file){
+    return new Promise(function(resolve,reject){
+      var fr=new FileReader();
+      fr.onerror=function(){reject(fr.error);};
+      fr.onload=function(){
+        var data=fr.result;
+        if(/svg|gif/.test(file.type)||file.size<400*1024){resolve(data);return;}
+        var im=new Image();
+        im.onload=function(){
+          var max=1600, w=im.naturalWidth, h=im.naturalHeight, k=Math.min(1,max/w);
+          var c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+          c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+          var png=c.toDataURL('image/png');
+          resolve(png.length<1.5*1024*1024?png:c.toDataURL('image/jpeg',0.85));
+        };
+        im.onerror=function(){resolve(data);};
+        im.src=data;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  /* ---------- versions ---------- */
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function pad(n){return (n<10?'0':'')+n;}
+  function niceDate(d){return d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear()+', '+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function isoLocal(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());}
+  function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+  function stampVersion(scope,n,d,note){
+    var f=scope.querySelector('#page-version'); if(!f)return;
+    f.setAttribute('data-version',String(n)); f.setAttribute('data-saved',isoLocal(d));
+    scope.querySelector('#ver-num').textContent=String(n);
+    scope.querySelector('#ver-date').textContent=niceDate(d);
+    var li=(scope.ownerDocument||scope).createElement('li');
+    li.innerHTML='<b>Version '+n+'</b> &middot; '+esc(niceDate(d))+(note?' &middot; '+esc(note):'');
+    var log=scope.querySelector('#ver-log'); log.insertBefore(li,log.firstChild);
+  }
+  function currentVersion(){
+    var f=document.getElementById('page-version');
+    return f?parseInt(f.getAttribute('data-version'),10)||1:1;
+  }
+
+  /* the save button first asks for an optional note, then downloads */
+  var noteBox=document.createElement('div'); noteBox.className='ver-note';
+  noteBox.innerHTML='<label for="ver-note-input">What changed? (optional, shown in the version history)</label>';
+  var noteInput=document.createElement('input'); noteInput.id='ver-note-input'; noteInput.type='text'; noteInput.maxLength=160;
+  noteInput.placeholder='e.g. Added the limit monitoring report';
+  var bDownload=btn('Download version','primary',doSave,'Download the new version');
+  var bCancelSave=btn('Cancel','',function(){askingNote=false;render();},'Back to editing');
+    noteBox.appendChild(noteInput); noteBox.appendChild(bDownload); noteBox.appendChild(bCancelSave);
+  noteInput.addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();doSave();} if(e.key==='Escape'){askingNote=false;render();} });
+  var askingNote=false;
+
+  function saveCopy(){
+    askingNote=true; noteInput.value=''; render();
+    noteBox.querySelector('label').textContent='Saving version '+(currentVersion()+1)+'. What changed? (optional)';
+    setTimeout(function(){noteInput.focus();},0);
+  }
+
+  async function doSave(){
+    var n=currentVersion()+1, now=new Date(), note=noteInput.value.trim();
+    var file='GPMS_Extract_Guide_v'+n+'_'+isoLocal(now).slice(0,10)+'.html';
+    var html=buildHtml(function(clone){stampVersion(clone,n,now,note);});
+    try{
+      var dl=(window.claude&&window.claude.use)?await window.claude.use('downloads'):null;
+      if(dl){
+        await dl.save({filename:file,data:html});
+      }else{
+        var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a'); a.href=url; a.download=file; a.setAttribute('data-editor-ui','');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){URL.revokeObjectURL(url);},2000);
+      }
+      stampVersion(document,n,now,note);
+      askingNote=false; dirty=false; clearDraft(); render();
+      toast('Saved version '+n+' as '+file+'. Upload it to your site to publish the changes.');
+    }catch(err){
+      var code=err&&err.code;
+      if(code==='declined')toast('Download cancelled. Your edits are still on the page.');
+      else toast('The download did not start. Your edits are still on the page; try again.');
+    }
+  }
+
+  /* ---------- draft kept in this browser, in case the tab is closed ---------- */
+  function snapshot(){
+    return regions().map(function(r){return r.innerHTML;});
+  }
+  function saveDraft(){
+    try{localStorage.setItem(DRAFT_KEY,JSON.stringify({at:Date.now(),parts:snapshot()}));}catch(e){}
+  }
+  function clearDraft(){ try{localStorage.removeItem(DRAFT_KEY);}catch(e){} }
+  function offerDraft(){
+    var d=null; try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');}catch(e){}
+    if(!d||!d.parts||d.parts.length!==regions().length)return;
+    var same=snapshot().every(function(h,i){return h===d.parts[i];}); if(same){clearDraft();return;}
+    var box=document.createElement('div'); box.className='ed-draft gut'; box.setAttribute('data-editor-ui','');
+    var when=new Date(d.at).toLocaleString();
+    box.innerHTML='<div class="inner"><span>You have unsaved edits from '+when+' in this browser.</span></div>';
+    var inner=box.firstChild;
+    var r=document.createElement('button'); r.type='button'; r.textContent='Restore edits';
+    var x=document.createElement('button'); x.type='button'; x.textContent='Discard them';
+    r.onclick=function(){ regions().forEach(function(el,i){el.innerHTML=d.parts[i];}); window.__initAnims&&window.__initAnims(); box.remove(); dirty=true; render(); toast('Edits restored. Click Save new version to keep them in a file.'); };
+    x.onclick=function(){ clearDraft(); box.remove(); };
+    inner.appendChild(r); inner.appendChild(x);
+    var top=document.querySelector('header.top'); top.parentNode.insertBefore(box,top);
+  }
+
+  document.addEventListener('dragover',function(e){ if(editing&&e.target.closest&&e.target.closest('[contenteditable="true"]')&&e.dataTransfer&&[].slice.call(e.dataTransfer.types||[]).indexOf('Files')>-1)e.preventDefault(); });
+  document.addEventListener('drop',function(e){
+    if(!editing||!e.target.closest||!e.target.closest('[contenteditable="true"]'))return;
+    var f=e.dataTransfer&&e.dataTransfer.files&&[].slice.call(e.dataTransfer.files).filter(function(x){return /^image\//.test(x.type);})[0];
+    if(!f)return; e.preventDefault();
+    var t=e.target.nodeType===3?e.target.parentNode:e.target; var sec=t.closest('main section');
+    if(sec){var blk=t;while(blk&&blk.parentNode!==sec)blk=blk.parentNode;lastBlock=blk;setCurrent(sec,null);}
+    fileToSrc(f).then(function(src){insertFigure(src,'',f.name||'Image');}).catch(function(){toast('That image could not be read.');});
+  });
+
+  window.addEventListener('beforeunload',function(e){ if(dirty){e.preventDefault();e.returnValue='';} });
+
+  render();
+  offerDraft();
+})();
+</script>
+
+<script data-page="links">
+/* links between the two guides: a file next to this page on the static site,
+   the published copy when the page is opened inside claude.ai */
+document.addEventListener('click',function(e){
+  var a=e.target.closest&&e.target.closest('a[data-online-href]');
+  if(!a||document.documentElement.classList.contains('editing'))return;
+  if(window.claude&&window.claude.use){a.href=a.getAttribute('data-online-href');a.target='_blank';a.rel='noopener';}
+});
+</script>
+<script data-page="anim">
+(function(){
+  /* Real rows of 01_Metadata_Import_Source_Files.xlsx; folder and date value are examples. */
+  var LOT=[
+    {g:'',t:'ASSETS'},{g:'',t:'SCR_COUNTERPARTY_TYPE1'},
+    {g:'GPMS',t:'ACCOUNT_LGAAP'},{g:'GPMS',t:'TRANSACTION_PRICE_LOCAL',pick:true},{g:'GPMS',t:'BLOOMBERG_DAY1'},{g:'GPMS',t:'GPMS_SIGNALETIQUE'}
+  ];
+  var COLS=[
+    {n:'ANALYSIS_DATE_START_NO_TOTAL',t:'Date',py:'DateType',v:'30/09/2026',o:'2026-09-30'},
+    {n:'AFFECTATION',t:'Character',py:'StringType',v:'BELINS INVL',o:'BELINS INVL'},
+    {n:'ENTRY_LIFE',t:'Integer',py:'IntegerType',v:'9541318',o:'9541318'},
+    {n:'A_OPERATION_TRANSACTION_PRICE',t:'Amount',py:'DoubleType',v:'101.25',o:'101.25'}
+  ];
+  var STEPS=[
+    {t:'Choose the run values',c:'The run starts with two choices: the <b>reporting date</b> and the <b>table group</b> GPMS.'},
+    {t:'Select the GPMS lines',c:'Only the lines of <b>List_Of_Tables</b> with table group GPMS are kept: 29 of the 64. Lines of other groups are skipped.'},
+    {t:'Take one line',c:'The engine works through them one by one. Here: <b>TRANSACTION_PRICE_LOCAL</b>, a CSV file with dates written dd/MM/yyyy.'},
+    {t:'Fill the period folder',c:'<b>{thisrun_period_path}</b> becomes the folder of this period.'},
+    {t:'Fill the date',c:'<b>{thisrun_date_GPMS}</b> becomes the date as written in GPMS file names.'},
+    {t:'Find the file',c:'The <b>*</b> at the end means "anything may follow". The file in the GPMS folder that starts with this name is used.'},
+    {t:'Read the CSV',c:'The file is read with <b>;</b> as separator. Each value still has to become a date, a number or text.'},
+    {t:'Apply the schema',c:'The schema sheet <b>TRANSACTION_PRICE_LOCAL</b> gives every column its type. Dates are read with the line’s format dd/MM/yyyy.'},
+    {t:'Ready for enrichment',c:'The typed table is passed on under its name to the <b>enrichment steps</b>. The next GPMS line follows the same steps.'}
+  ];
+  var ROLE={run:[0,0],lot:[1,2],file:[3,5],read:[6,7],out:[8,8]};
+  function h(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+
+  function build(host){
+    host.innerHTML=''; host.setAttribute('contenteditable','false');
+    var fa=h('div','fa'); host.appendChild(fa);
+    var top=h('div','fa-grid g2'); fa.appendChild(top);
+
+    var run=h('div','fa-card'); run.dataset.k='run';
+    run.innerHTML='<div class="fa-h"><span class="fa-n">1</span>Run parameters</div>'+
+      '<div class="fa-field"><span>Reporting date</span><span class="fa-select date" data-src="date">30/09/2026</span></div>'+
+      '<div class="fa-field"><span>Table group</span><span class="fa-select" data-src="grp">GPMS</span></div>';
+    top.appendChild(run);
+
+    var lot=h('div','fa-card'); lot.dataset.k='lot';
+    lot.innerHTML='<div class="fa-h"><span class="fa-n">2</span>List_Of_Tables</div><div class="fa-lot">'+
+      LOT.map(function(r){return '<div class="fa-lrow'+(r.g?' gp':'')+(r.pick?' pick':'')+'"><span class="g">'+(r.g||'&mdash;')+'</span><span class="t">'+esc(r.t)+'</span></div>';}).join('')+
+      '<div class="fa-lmore">… 64 lines in total, <span class="cnt">29 in GPMS</span></div></div>';
+    top.appendChild(lot);
+
+    var file=h('div','fa-card'); file.dataset.k='file';
+    file.innerHTML='<div class="fa-h"><span class="fa-n">3</span>TABLE_SOURCE_PATH · CSV · dd/MM/yyyy</div><div class="fa-pathline">'+
+      tok(0,'{thisrun_period_path}','risk_engine/test/20260930')+'/01_sources/01_raw_files/GPMS/ExtractSAS-TransactionPricev2-Local-'+tok(1,'{thisrun_date_GPMS}','20260930')+'-'+tok(2,'*','… any ending')+'</div><div class="fa-found"></div>';
+    fa.appendChild(file);
+
+    var read=h('div','fa-card'); read.dataset.k='read';
+    read.innerHTML='<div class="fa-h"><span class="fa-n">4</span>Read with schema TRANSACTION_PRICE_LOCAL</div><div style="overflow-x:auto"><table class="fa-mt"><thead><tr><th>Column_Name</th><th>Value in the file</th><th></th><th>Column_Type</th><th>Value in the table</th></tr></thead><tbody>'+
+      COLS.map(function(c){return '<tr><td class="c-raw"><code>'+esc(c.n)+'</code></td><td class="c-val">"'+esc(c.v)+'"</td><td class="c-arrow">→</td><td class="c-type">'+esc(c.t)+' <code>'+esc(c.py)+'</code></td><td class="c-tgt"><code>'+esc(c.o)+'</code></td></tr>';}).join('')+
+      '</tbody></table></div><div class="fa-tabname">4 of the 11 columns shown · file values are examples</div>';
+    fa.appendChild(read);
+
+    var out=h('div','fa-card'); out.dataset.k='out';
+    out.innerHTML='<div class="fa-h"><span class="fa-n">5</span>Result</div><div class="fa-out">Table <b>TRANSACTION_PRICE_LOCAL</b> · 11 typed columns</div>'+
+      '<div class="fa-file">▤ <span class="fa-file-t">waiting</span></div><div class="fa-next">Next line: BLOOMBERG_DAY1 → … → 28 more</div>';
+    fa.appendChild(out);
+
+    var cap=h('div','fa-caption'); cap.setAttribute('aria-live','polite'); fa.appendChild(cap);
+    var ctr=h('div','fa-controls'); fa.appendChild(ctr);
+    function b(lbl,cls,aria){var x=h('button',cls,lbl);x.type='button';if(aria)x.setAttribute('aria-label',aria);ctr.appendChild(x);return x;}
+    var bRestart=b('↺ Restart','','Restart from step 1'), bBack=b('‹ Back','','Previous step'), bPlay=b('▶ Play','play'), bNext=b('Next ›','','Next step');
+    var count=h('span','fa-count'); ctr.appendChild(count);
+    var live=h('span','fa-live','<i></i><span>paused</span>'); ctr.appendChild(live);
+    var dots=h('div','fa-dots'); dots.setAttribute('aria-label','Steps'); ctr.appendChild(dots);
+    STEPS.forEach(function(s,i){var d=h('button');d.type='button';d.setAttribute('aria-label','Step '+(i+1)+': '+s.t);d.title=s.t;d.addEventListener('click',function(){userTook=true;stop();go(i);stop();});dots.appendChild(d);});
+    var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function fly(from,to,text){
+      if(reduce||!from||!to)return;
+      var base=fa.getBoundingClientRect(),a=from.getBoundingClientRect(),z=to.getBoundingClientRect(); if(!a.width||!z.width)return;
+      var chip=h('span','fa-fly'); chip.textContent=text; fa.appendChild(chip);
+      chip.style.transform='translate('+(a.left-base.left)+'px,'+(a.top-base.top)+'px)'; void chip.offsetWidth;
+      chip.style.transform='translate('+(z.left-base.left)+'px,'+(z.top-base.top)+'px)';
+      setTimeout(function(){chip.style.opacity='0';},900); setTimeout(function(){chip.remove();},1200);
+    }
+
+    var step=0,timer=null,userTook=false,loopT=null;
+    function go(n){
+      step=Math.max(0,Math.min(STEPS.length-1,n));
+      [run,lot,file,read,out].forEach(function(c){var r=ROLE[c.dataset.k];c.classList.toggle('active',step>=r[0]&&step<=r[1]);c.classList.toggle('done',step>r[1]);c.classList.toggle('idle',step<r[0]);});
+      lot.classList.toggle('s-filter',step>=1); lot.classList.toggle('s-pick',step>=2);
+      [].forEach.call(file.querySelectorAll('.fa-tok'),function(t){
+        var i=+t.dataset.i, filled=step>=3+i, was=t.classList.contains('val');
+        t.textContent=filled?t.dataset.v:t.dataset.p; t.classList.toggle('val',filled); t.classList.toggle('ph',!filled);
+        t.classList.remove('pop'); if(filled&&!was&&step===3+i){void t.offsetWidth;t.classList.add('pop'); if(i===1)fly(run.querySelector('[data-src="date"]'),t,t.dataset.v);}
+      });
+      file.querySelector('.fa-found').textContent=step>=5?'✓ ExtractSAS-TransactionPricev2-Local-20260930-… found in the GPMS folder':'';
+      [].forEach.call(read.querySelectorAll('tbody tr'),function(tr){tr.classList.toggle('s-raw',step>=6);tr.classList.toggle('s-type',step>=7);tr.classList.toggle('s-tgt',step>=7);});
+      var f=out.querySelector('.fa-file'); f.classList.toggle('saved',step>=8); f.querySelector('.fa-file-t').textContent=step>=8?'ready for enrichment':'waiting';
+      out.querySelector('.fa-next').style.opacity=step>=8?'1':'0';
+      cap.innerHTML='<b>Step '+(step+1)+' · '+STEPS[step].t+'.</b> '+STEPS[step].c;
+      count.textContent=(step+1)+' / '+STEPS.length;
+      [].forEach.call(dots.children,function(d,i){d.className=i===step?'cur':(i<step?'past':'');d.setAttribute('aria-current',i===step?'step':'false');});
+      bBack.disabled=step===0; bNext.disabled=step===STEPS.length-1;
+    }
+    function setLive(on){live.classList.toggle('on',on);live.lastChild.textContent=on?'playing':'paused';}
+    function stop(){ if(timer){clearInterval(timer);timer=null;} clearTimeout(loopT); setLive(false); bPlay.innerHTML=step===STEPS.length-1?'↺ Replay':'▶ Play'; }
+    function play(){
+      if(timer){stop();return;}
+      if(step===STEPS.length-1)go(0);
+      bPlay.innerHTML='❚❚ Pause'; setLive(true);
+      timer=setInterval(function(){
+        if(step>=STEPS.length-1){stop();return;}
+        go(step+1);
+        if(step===STEPS.length-1){ stop(); if(!userTook){ setLive(true); loopT=setTimeout(function(){ if(!userTook){go(0);play();} },4500);} }
+      },2500);
+    }
+    bPlay.addEventListener('click',function(){userTook=true;play();});
+    bNext.addEventListener('click',function(){userTook=true;stop();go(step+1);stop();});
+    bBack.addEventListener('click',function(){userTook=true;stop();go(step-1);stop();});
+    bRestart.addEventListener('click',function(){userTook=true;stop();go(0);stop();});
+    if(!reduce&&'IntersectionObserver' in window){
+      var seen=false, io=new IntersectionObserver(function(es){es.forEach(function(e){
+        if(e.isIntersecting&&!seen&&!userTook){seen=true;setTimeout(function(){if(!userTook&&!timer)play();},600);}
+        if(!e.isIntersecting&&!userTook){stop();seen=false;}
+      });},{threshold:.35});
+      io.observe(fa);
+    }
+    go(0); stop();
+  }
+  function tok(i,p,v){return '<span class="fa-tok ph" data-i="'+i+'" data-p="'+esc(p)+'" data-v="'+esc(v)+'">'+esc(p)+'</span>';}
+  window.__initAnims=function(){ [].forEach.call(document.querySelectorAll('[data-anim="gpms"]'),build); };
+  window.__initAnims();
+})();
+</script>
+<style data-page="anim-gpms">
+.fa-grid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fa-lot{display:grid;gap:3px;font-family:var(--f-mono);font-size:12px}
+.fa-lrow{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;padding:2px 6px;border-radius:4px;transition:opacity .4s ease,background .4s ease}
+.fa-lrow .g{color:var(--muted)}
+.fa-lrow .t{overflow-wrap:anywhere}
+.fa-lot.s-filter .fa-lrow:not(.gp){opacity:.3;text-decoration:line-through}
+.fa-lot.s-filter .fa-lrow.gp{background:var(--accent-soft)}
+.fa-lot.s-filter .fa-lrow.gp .g{color:var(--accent);font-weight:600}
+.fa-card.s-filter .fa-lrow:not(.gp){opacity:.3;text-decoration:line-through}
+.fa-card.s-filter .fa-lrow.gp{background:var(--accent-soft)}
+.fa-card.s-filter .fa-lrow.gp .g{color:var(--accent);font-weight:600}
+.fa-card.s-pick .fa-lrow.pick{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.fa-lmore{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--f-body)}
+.fa-lmore .cnt{opacity:0;transition:opacity .4s}
+.fa-card.s-filter .fa-lmore .cnt{opacity:1;color:var(--accent);font-weight:600}
+.fa-mt{width:100%;min-width:560px;border-collapse:collapse;font-size:12px}
+.fa-mt th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding:4px 6px;background:none}
+.fa-mt td{padding:5px 6px;border-top:1px solid var(--line);vertical-align:middle;background:none}
+.fa-mt .c-raw code{font-size:11px}
+.fa-mt .c-val{font-family:var(--f-mono);color:var(--muted);opacity:.35;transition:opacity .4s}
+.fa-mt .c-arrow{color:var(--muted);opacity:0;transition:opacity .3s}
+.fa-mt .c-type,.fa-mt .c-tgt{opacity:0;transform:translateX(-6px);transition:opacity .4s ease,transform .4s ease}
+.fa-mt tr.s-raw .c-val{opacity:1;color:var(--ink)}
+.fa-mt tr.s-type .c-type,.fa-mt tr.s-type .c-arrow{opacity:1;transform:none}
+.fa-mt tr.s-tgt .c-tgt{opacity:1;transform:none}
+.fa-mt tr.s-tgt .c-tgt code{background:var(--green-soft);color:var(--green)}
+.fa-next{font-size:12px;color:var(--muted);margin-top:8px;opacity:0;transition:opacity .4s}
+@media (max-width:860px){.fa-grid.g2{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){.fa-mt .c-type,.fa-mt .c-tgt,.fa-mt .c-arrow,.fa-mt .c-val,.fa-lrow,.fa-next,.fa-lmore .cnt{transition:none}}
+</style>
+</body></html>
