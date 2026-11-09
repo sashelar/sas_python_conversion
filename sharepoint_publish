@@ -1,0 +1,160 @@
+# connectors we will need
+from belfiusframework.connectors import ExcelConnector as excel, DeltalakeConnector as delta, SharepointConnector as sp
+from belfiusframework.connectors import TxtConnector as txt, CsvConnector as csv
+
+# format our code when notebook is saved to comply with code validator
+from belfiusframework import formatters
+
+# generate time in Python
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+
+from datetime import datetime
+from typing import Union
+
+
+def format_date_nicely(dt: Union[datetime, None] = None) -> str:
+    """
+    Format a datetime object into a human-readable string with ordinal suffixes.
+
+    Args:
+        dt (datetime, optional): Datetime object to format. Defaults to current UTC time if None.
+
+    Returns:
+        str: Formatted date string in the format "Weekday Dayth of Month Year"
+             (e.g., "Friday 17th of September 2026").
+
+    Raises:
+        ValueError: If the input is not a datetime object or None.
+
+    Examples:
+        >>> from datetime import datetime
+        >>> format_date_nicely(datetime(2026, 9, 17))
+        'Friday 17th of September 2026'
+        >>> format_date_nicely()  # Uses current time
+        'Monday 20th of May 2024'
+    """
+    if dt is None:
+        dt = datetime.now()
+    elif not isinstance(dt, datetime):
+        raise ValueError("Input must be a datetime object or None")
+
+    def _get_ordinal_suffix(day: int) -> str:
+        """Return the ordinal suffix for a given day (e.g., 1 -> 'st', 2 -> 'nd')."""
+        if 11 <= day <= 13:  # Special case for 11th-13th
+            return "th"
+        return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+    return f"{dt.strftime('%A')} {dt.day}{_get_ordinal_suffix(dt.day)} " f"of {dt.strftime('%B')} {dt.year}"
+
+
+
+test_csv_file = csv.read_csv(
+    layer="ref",
+    folder_name="publish_to_sharepoint",
+    file_name="test_csv.csv",
+    delimiter=",",
+    header=True,
+    encoding="UTF-8",
+    optimize=False,
+    persist=False,
+    inferschema=False,
+    multiline=True,
+    quote='"',
+    escape='"',
+)
+
+display(test_csv_file)
+
+
+timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
+# target_filename = "test_csv_file_" + timestamp.strftime("%Y%m%d_%H%M") + ".csv"
+target_filename = "test_csv_file" + ".csv"
+source_file_name = "test_csv_file"
+
+csv.write_csv(
+    layer="sharepoint",
+    data=test_csv_file,
+    folder_name="publish_to_sharepoint",
+    file_name=source_file_name,
+    delimiter=",",
+    single_file=True,
+    header=True,
+    encoding="UTF-8",
+    remove_new_line_characters=True,
+)
+
+sp.publish_file_to_sharepoint(
+    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".csv",
+    target_folder="test/my-new-folder/",
+    target_file_name=target_filename,
+    confidentiality="Confidential",
+    pii_flag=False,
+    description="Data refresh at " + format_date_nicely(timestamp),
+    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
+)
+
+
+
+
+assets_metadata = txt.read_txt(layer="ref", folder_name="publish_to_sharepoint", file_name="Assets_columns", extension="txt")
+
+timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
+target_filename = "assets_metadata_" + timestamp.strftime("%Y%m%d_%H%M") + ".txt"
+source_file_name = "Assets_columns_updates"
+
+txt.write_txt(
+    layer="sharepoint",
+    folder_name="publish_to_sharepoint",
+    file_name=source_file_name,
+    data=assets_metadata,
+    delimiter=",",
+    nr_of_output_files=1,
+    single_file=True,
+    extension="txt",
+)
+
+sp.publish_file_to_sharepoint(
+    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".txt",
+    target_folder="test/my-new-folder/",
+    target_file_name=target_filename,
+    confidentiality="Public",
+    pii_flag=False,
+    description="Data refresh at " + format_date_nicely(timestamp),
+    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
+)
+
+
+
+fac_assets_metadata = txt.read_txt(layer="ref", folder_name="publish_to_sharepoint", file_name="test_fac_file", extension="fac")
+
+
+timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
+target_filename = "test_fac_file_" + timestamp.strftime("%Y%m%d_%H%M") + ".fac"
+source_file_name = "test_fac_file_updates"
+
+txt.write_txt(
+    layer="sharepoint",
+    folder_name="publish_to_sharepoint",
+    file_name=source_file_name,
+    data=fac_assets_metadata,
+    delimiter=",",
+    nr_of_output_files=1,
+    single_file=True,
+    extension="fac",
+)
+
+sp.publish_file_to_sharepoint(
+    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".fac",
+    target_folder="test/my-new-folder/",
+    target_file_name=target_filename,
+    confidentiality="Public",
+    pii_flag=False,
+    description="Data refresh at " + format_date_nicely(timestamp),
+    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
+)
+
+
+
