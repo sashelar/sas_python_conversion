@@ -1,160 +1,288 @@
-# connectors we will need
-from belfiusframework.connectors import ExcelConnector as excel, DeltalakeConnector as delta, SharepointConnector as sp
-from belfiusframework.connectors import TxtConnector as txt, CsvConnector as csv
-
-# format our code when notebook is saved to comply with code validator
-from belfiusframework import formatters
-
-# generate time in Python
+# =============================================================================
+# SharePoint publisher helper
+#   Flow:  ref / stg container  ->  sharepoint container  ->  SharePoint site
+#   Usage: publish_to_sharepoint(mode="csv" | "txt" | "dataframe", ...)
+# =============================================================================
 from datetime import datetime
+from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
+from belfiusframework.connectors import CsvConnector as csv
+from belfiusframework.connectors import SharepointConnector as sp
+from belfiusframework.connectors import TxtConnector as txt
+
+# ---------------------------------------------------------------------------
+# Defaults – change once here instead of in every call
+# ---------------------------------------------------------------------------
+DEFAULT_SITE_PATH = "/sites/app-app-data-risk-belins-download"
+DEFAULT_STAGING_FOLDER = "publish_to_sharepoint"  # folder inside the "sharepoint" layer
+TIMEZONE = ZoneInfo("Europe/Brussels")
+
+SUPPORTED_MODES = ("csv", "txt", "dataframe")
+SUPPORTED_LAYERS = ("ref", "stg")
+SUPPORTED_CONFIDENTIALITY = ("Public", "Internal", "Confidential", "Strictly Confidential")
 
 
-from datetime import datetime
-from typing import Union
-
-
-def format_date_nicely(dt: Union[datetime, None] = None) -> str:
-    """
-    Format a datetime object into a human-readable string with ordinal suffixes.
-
-    Args:
-        dt (datetime, optional): Datetime object to format. Defaults to current UTC time if None.
-
-    Returns:
-        str: Formatted date string in the format "Weekday Dayth of Month Year"
-             (e.g., "Friday 17th of September 2026").
-
-    Raises:
-        ValueError: If the input is not a datetime object or None.
-
-    Examples:
-        >>> from datetime import datetime
-        >>> format_date_nicely(datetime(2026, 9, 17))
-        'Friday 17th of September 2026'
-        >>> format_date_nicely()  # Uses current time
-        'Monday 20th of May 2024'
-    """
+def format_date_nicely(dt: Optional[datetime] = None) -> str:
+    """Return e.g. 'Monday 9th of November 2026'."""
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(TIMEZONE)
     elif not isinstance(dt, datetime):
         raise ValueError("Input must be a datetime object or None")
 
-    def _get_ordinal_suffix(day: int) -> str:
-        """Return the ordinal suffix for a given day (e.g., 1 -> 'st', 2 -> 'nd')."""
-        if 11 <= day <= 13:  # Special case for 11th-13th
-            return "th"
-        return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-
-    return f"{dt.strftime('%A')} {dt.day}{_get_ordinal_suffix(dt.day)} " f"of {dt.strftime('%B')} {dt.year}"
+    day = dt.day
+    suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{dt.strftime('%A')} {day}{suffix} of {dt.strftime('%B')} {dt.year}"
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers (one per mode)
+# ---------------------------------------------------------------------------
+def _read_source(mode, source_layer, source_folder, source_file, extension, csv_options):
+    """Read the file from ref/stg using the right connector."""
+    if mode == "csv":
+        read_kwargs = dict(
+            delimiter=",",
+            header=True,
+            encoding="UTF-8",
+            optimize=False,
+            persist=False,
+            inferschema=False,
+            multiline=True,
+            quote='"',
+            escape='"',
+        )
+        read_kwargs.update(csv_options or {})
+        # read_csv expects the file name WITH extension (e.g. "test_csv.csv")
+        file_name = source_file if source_file.lower().endswith(".csv") else f"{source_file}.csv"
+        return csv.read_csv(
+            layer=source_layer,
+            folder_name=source_folder,
+            file_name=file_name,
+            **read_kwargs,
+        )
 
-test_csv_file = csv.read_csv(
-    layer="ref",
-    folder_name="publish_to_sharepoint",
-    file_name="test_csv.csv",
-    delimiter=",",
-    header=True,
-    encoding="UTF-8",
-    optimize=False,
-    persist=False,
-    inferschema=False,
-    multiline=True,
-    quote='"',
-    escape='"',
-)
+    if mode == "txt":
+        # read_txt expects the file name WITHOUT extension + a separate extension
+        return txt.read_txt(
+            layer=source_layer,
+            folder_name=source_folder,
+            file_name=source_file,
+            extension=extension,
+        )
 
-display(test_csv_file)
-
-
-timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
-# target_filename = "test_csv_file_" + timestamp.strftime("%Y%m%d_%H%M") + ".csv"
-target_filename = "test_csv_file" + ".csv"
-source_file_name = "test_csv_file"
-
-csv.write_csv(
-    layer="sharepoint",
-    data=test_csv_file,
-    folder_name="publish_to_sharepoint",
-    file_name=source_file_name,
-    delimiter=",",
-    single_file=True,
-    header=True,
-    encoding="UTF-8",
-    remove_new_line_characters=True,
-)
-
-sp.publish_file_to_sharepoint(
-    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".csv",
-    target_folder="test/my-new-folder/",
-    target_file_name=target_filename,
-    confidentiality="Confidential",
-    pii_flag=False,
-    description="Data refresh at " + format_date_nicely(timestamp),
-    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
-)
+    raise ValueError(f"Cannot read source for mode '{mode}'")
 
 
+def _write_to_sharepoint_layer(mode, data, staging_folder, staging_name, extension, csv_options, txt_options):
+    """Write the data to the 'sharepoint' layer as a single file."""
+    if mode in ("csv", "dataframe"):
+        write_kwargs = dict(
+            delimiter=",",
+            header=True,
+            encoding="UTF-8",
+            remove_new_line_characters=True,
+        )
+        # only keep options that write_csv understands
+        for key in ("delimiter", "header", "encoding", "remove_new_line_characters"):
+            if csv_options and key in csv_options:
+                write_kwargs[key] = csv_options[key]
+        csv.write_csv(
+            layer="sharepoint",
+            data=data,
+            folder_name=staging_folder,
+            file_name=staging_name,
+            single_file=True,
+            **write_kwargs,
+        )
+        return
+
+    if mode == "txt":
+        write_kwargs = dict(delimiter=",", nr_of_output_files=1)
+        write_kwargs.update(txt_options or {})
+        txt.write_txt(
+            layer="sharepoint",
+            folder_name=staging_folder,
+            file_name=staging_name,
+            data=data,
+            single_file=True,
+            extension=extension,
+            **write_kwargs,
+        )
+        return
+
+    raise ValueError(f"Cannot write for mode '{mode}'")
 
 
-assets_metadata = txt.read_txt(layer="ref", folder_name="publish_to_sharepoint", file_name="Assets_columns", extension="txt")
+# ---------------------------------------------------------------------------
+# Public function
+# ---------------------------------------------------------------------------
+def publish_to_sharepoint(
+    mode: str,
+    target_folder: str,
+    *,
+    # --- source (ignored when mode="dataframe") ---
+    source_layer: str = "ref",
+    source_folder: Optional[str] = None,
+    source_file: Optional[str] = None,
+    extension: Optional[str] = None,
+    # --- in-memory data (mode="dataframe") ---
+    data=None,
+    # --- target on SharePoint ---
+    target_file_name: Optional[str] = None,
+    dated_folder: bool = True,
+    date_folder_format: str = "%Y-%m-%d",
+    add_timestamp: bool = False,
+    timestamp_format: str = "%Y%m%d_%H%M",
+    confidentiality: str = "Public",
+    pii_flag: bool = False,
+    description: Optional[str] = None,
+    sharepoint_site_path: str = DEFAULT_SITE_PATH,
+    # --- staging ---
+    staging_folder: str = DEFAULT_STAGING_FOLDER,
+    staging_name: Optional[str] = None,
+    # --- advanced connector options ---
+    csv_options: Optional[dict] = None,
+    txt_options: Optional[dict] = None,
+    show_preview: bool = False,
+) -> dict:
+    """
+    Read a file from ref/stg (or take a DataFrame), stage it in the 'sharepoint'
+    layer and publish it to the SharePoint site.
 
-timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
-target_filename = "assets_metadata_" + timestamp.strftime("%Y%m%d_%H%M") + ".txt"
-source_file_name = "Assets_columns_updates"
+    By default the file keeps a clean name and lands in a dated folder:
+        <target_folder>/<YYYY-MM-DD>/<file>.<ext>
+    Use dated_folder=False to skip the date folder, and add_timestamp=True to
+    also put the time in the file name (useful for several runs per day).
 
-txt.write_txt(
-    layer="sharepoint",
-    folder_name="publish_to_sharepoint",
-    file_name=source_file_name,
-    data=assets_metadata,
-    delimiter=",",
-    nr_of_output_files=1,
-    single_file=True,
-    extension="txt",
-)
+    Modes:
+        "csv"       -> read with CsvConnector, write with CsvConnector
+        "txt"       -> read/write with TxtConnector; works for any text extension
+                       (txt, fac, dat, ...) via `extension`
+        "dataframe" -> you pass `data=` (Spark DataFrame), written as CSV
 
-sp.publish_file_to_sharepoint(
-    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".txt",
-    target_folder="test/my-new-folder/",
-    target_file_name=target_filename,
-    confidentiality="Public",
-    pii_flag=False,
-    description="Data refresh at " + format_date_nicely(timestamp),
-    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
-)
+    Returns a dict with what was published (handy for logging).
+    """
+    # ------------------------- validation -------------------------
+    mode = mode.lower().strip()
+    if mode not in SUPPORTED_MODES:
+        raise ValueError(f"mode must be one of {SUPPORTED_MODES}, got '{mode}'")
+    if confidentiality not in SUPPORTED_CONFIDENTIALITY:
+        raise ValueError(f"confidentiality must be one of {SUPPORTED_CONFIDENTIALITY}")
+
+    if mode == "dataframe":
+        if data is None:
+            raise ValueError("mode='dataframe' requires data=<your DataFrame>")
+        extension = "csv"
+    else:
+        if source_layer not in SUPPORTED_LAYERS:
+            raise ValueError(f"source_layer must be one of {SUPPORTED_LAYERS}")
+        if not source_folder or not source_file:
+            raise ValueError("source_folder and source_file are required for csv/txt modes")
+        if mode == "csv":
+            extension = "csv"
+        elif not extension:
+            raise ValueError("mode='txt' requires extension= (e.g. 'txt', 'fac')")
+
+    extension = extension.lstrip(".")
+    timestamp = datetime.now(TIMEZONE)
+
+    # base name used for staging + default target name
+    base_name = (
+        staging_name
+        or (target_file_name.rsplit(".", 1)[0] if target_file_name else None)
+        or (source_file.rsplit(".", 1)[0] if source_file else "dataframe_export")
+    )
+    staging_name = staging_name or f"{base_name}_updates"
+
+    # final file name on SharePoint
+    if target_file_name:
+        target_base = target_file_name.rsplit(".", 1)[0] if target_file_name.endswith(f".{extension}") else target_file_name
+    else:
+        target_base = base_name
+    if add_timestamp:
+        target_base = f"{target_base}_{timestamp.strftime(timestamp_format)}"
+    final_name = f"{target_base}.{extension}"
+
+    # land the file in a dated subfolder, e.g. test/my-new-folder/2026-11-09/
+    target_folder = target_folder.strip("/")
+    if dated_folder:
+        target_folder = f"{target_folder}/{timestamp.strftime(date_folder_format)}"
+    target_folder = target_folder + "/"
+
+    # ------------------------- 1. read -------------------------
+    if mode != "dataframe":
+        data = _read_source(mode, source_layer, source_folder, source_file, extension, csv_options)
+    if show_preview:
+        display(data)  # noqa: F821  (display exists in Synapse notebooks)
+
+    # ------------------------- 2. stage -------------------------
+    _write_to_sharepoint_layer(mode, data, staging_folder, staging_name, extension, csv_options, txt_options)
+
+    # ------------------------- 3. publish -------------------------
+    staged_path = f"{staging_folder}/{staging_name}/{staging_name}.{extension}"
+    sp.publish_file_to_sharepoint(
+        file_path=staged_path,
+        target_folder=target_folder,
+        target_file_name=final_name,
+        confidentiality=confidentiality,
+        pii_flag=pii_flag,
+        description=description or f"Data refresh at {format_date_nicely(timestamp)}",
+        sharepoint_site_path=sharepoint_site_path,
+    )
+
+    result = {
+        "mode": mode,
+        "source": f"{source_layer}/{source_folder}/{source_file}" if mode != "dataframe" else "in-memory DataFrame",
+        "staged_path": staged_path,
+        "sharepoint_site": sharepoint_site_path,
+        "sharepoint_path": f"{target_folder}{final_name}",
+        "published_at": timestamp.isoformat(),
+    }
+    print(f"✅ Published {result['source']} -> {sharepoint_site_path}/{result['sharepoint_path']}")
+    return result
 
 
+# =============================================================================
+# Examples (same cases as your original notebook)
+# =============================================================================
+if __name__ == "__main__":
+    # 1) CSV from ref -> test/my-new-folder/2026-11-09/test_csv_file.csv
+    publish_to_sharepoint(
+        mode="csv",
+        source_layer="ref",
+        source_folder="publish_to_sharepoint",
+        source_file="test_csv.csv",
+        target_folder="test/my-new-folder",
+        target_file_name="test_csv_file.csv",
+        confidentiality="Confidential",
+        show_preview=True,
+    )
 
-fac_assets_metadata = txt.read_txt(layer="ref", folder_name="publish_to_sharepoint", file_name="test_fac_file", extension="fac")
+    # 2) TXT from ref -> test/my-new-folder/2026-11-09/assets_metadata.txt
+    publish_to_sharepoint(
+        mode="txt",
+        source_layer="ref",
+        source_folder="publish_to_sharepoint",
+        source_file="Assets_columns",
+        extension="txt",
+        target_folder="test/my-new-folder",
+        target_file_name="assets_metadata",
+    )
 
+    # 3) .fac file, month folder + time in name -> test/my-new-folder/2026-11/test_fac_file_20261109_1431.fac
+    publish_to_sharepoint(
+        mode="txt",
+        source_layer="ref",
+        source_folder="publish_to_sharepoint",
+        source_file="test_fac_file",
+        extension="fac",
+        target_folder="test/my-new-folder",
+        date_folder_format="%Y-%m",
+        add_timestamp=True,
+    )
 
-timestamp = datetime.now(ZoneInfo("Europe/Brussels"))
-target_filename = "test_fac_file_" + timestamp.strftime("%Y%m%d_%H%M") + ".fac"
-source_file_name = "test_fac_file_updates"
-
-txt.write_txt(
-    layer="sharepoint",
-    folder_name="publish_to_sharepoint",
-    file_name=source_file_name,
-    data=fac_assets_metadata,
-    delimiter=",",
-    nr_of_output_files=1,
-    single_file=True,
-    extension="fac",
-)
-
-sp.publish_file_to_sharepoint(
-    file_path="publish_to_sharepoint/" + source_file_name + "/" + source_file_name + ".fac",
-    target_folder="test/my-new-folder/",
-    target_file_name=target_filename,
-    confidentiality="Public",
-    pii_flag=False,
-    description="Data refresh at " + format_date_nicely(timestamp),
-    sharepoint_site_path="/sites/app-app-data-risk-belins-download",
-)
-
-
-
+    # 4) A DataFrame you built in the notebook, from stg data for example
+    # df = spark.sql("SELECT ...")
+    # publish_to_sharepoint(mode="dataframe", data=df,
+    #                       target_folder="reports/monthly", target_file_name="monthly_report")
