@@ -1,291 +1,133 @@
 """
 apply_initial_shocks.py
-
-PySpark / Azure Synapse equivalent of the SAS macro:
-
-    %macro Apply_Initial_Shocks (In_Impacted_Dataset=,
-                                  In_Rule_Dataset=,
-                                  In_Rule_Group=,
-                                  In_Filename_Path=,
-                                  Out_Ouput_Dataset=);
-
-This macro is structurally identical to %Apply_Business_Rules (same
-DELETE / exception-capture step, same final %include-into-a-data-step
-pattern) with one addition: for RULE_TYPE="IF_THEN" rows, a SHOCK_TYPE
-column decides HOW the assignment expression is built, instead of always
-using RULE_TO_APPLY verbatim:
-
-    SHOCK_TYPE       Generated assignment (SAS)
-    ---------------  --------------------------------------------------
-    NONE             RULE_TO_APPLY as-is (same behaviour as Apply_Business_Rules)
-    REPLACE_CHAR     RULE_VARIABLE = SHOCK_VARIABLE_CHAR
-    REPLACE_NUM      RULE_VARIABLE = SHOCK_VARIABLE_NUM
-    ADD              RULE_VARIABLE = RULE_VARIABLE + SHOCK_VARIABLE_NUM
-    MULT             RULE_VARIABLE = (1 + SHOCK_VARIABLE_NUM) * RULE_VARIABLE
-
-RULE_TYPE="DELETE" and RULE_TYPE="IF_THEN_ELSE" behave exactly like in
-Apply_Business_Rules (IF_THEN_ELSE doesn't consult SHOCK_TYPE in the SAS
-source either).
-
-See apply_business_rules.py for the full rationale on why this is
-implemented with DataFrame operations instead of generated/%include-d SAS
-code, and for the SAS -> Spark SQL translation notes (sas_rules_common.py).
-
-ASSUMPTIONS (please confirm/adjust against your real rule data)
------------------------------------------------------------------
-1. RULE_GROUP        - matched case-insensitively, trimmed (some source
-                        data has trailing-whitespace duplicates).
-2. RULE_TYPE          - one of 'DELETE', 'IF_THEN', 'IF_THEN_ELSE'.
-3. SHOCK_TYPE          - one of 'NONE', 'REPLACE_CHAR', 'REPLACE_NUM',
-                        'ADD', 'MULT'; only read when RULE_TYPE='IF_THEN'.
-                        Treated as 'NONE' if blank/null.
-4. RULE_VARIABLE      - the target column name to shock (a plain
-                        identifier, e.g. "AMOUNT"), used for
-                        REPLACE_CHAR/REPLACE_NUM/ADD/MULT.
-5. SHOCK_VARIABLE_CHAR - stored SAS-style, i.e. already containing the
-                        quotes for a string literal (e.g. the text
-                        `"Some Value"`), consistent with how RULE_TO_APPLY
-                        is stored elsewhere in the rule tables. Run
-                        through translate_sas_expression() to convert to
-                        Spark SQL's single-quote convention.
-6. SHOCK_VARIABLE_NUM  - a plain numeric literal (or numeric column
-                        reference), used as-is in ADD/MULT/REPLACE_NUM.
-7. RULE_DATA_SELECTION / RULE_TO_APPLY / RULE_RETURN
-                      - same conventions as Apply_Business_Rules (Spark
-                        SQL after translation; ';'-separated
-                        "column = expr" assignments for IF_THEN_ELSE and
-                        for IF_THEN with SHOCK_TYPE='NONE').
-
-Exception capture ("CTX_EXC.<RULE_ID>" in SAS) is materialized as a Spark
-temp view named "CTX_EXC_<RULE_ID>" plus a Python dict of DataFrames.
+ 
+PySpark version of the initial shocks engine for Azure Synapse.
+ 
+The shock rules are in Initial_Shocks_<date>.xlsx, sheets "Shock_Assets" and
+"Shock_Assets_Liabilities". RULE_DATA_SELECTION, RULE_TO_APPLY and
+SHOCK_VARIABLE_CHAR are already written in Spark SQL, so this code only reads
+the rules and applies them - no SAS translation anywhere.
+ 
+Columns used:
+    RULE_GROUP           the batch of shock rules to run
+    RULE_ID              identifier of the rule
+    RULE_DATA_SELECTION  Spark SQL condition - which rows the shock applies to
+    RULE_TYPE            IF_THEN (shock RULE_VARIABLE) or DELETE (drop matching rows)
+    SHOCK_TYPE           REPLACE_CHAR, REPLACE_NUM, ADD, MULT or NONE
+    RULE_TO_APPLY        Spark SQL expression, used when SHOCK_TYPE is NONE
+    RULE_VARIABLE        the column the shock writes
+    SHOCK_VARIABLE_CHAR  text value for REPLACE_CHAR, in single quotes
+    SHOCK_VARIABLE_NUM   number for REPLACE_NUM, ADD and MULT
+    ACTIVE               Y, or N to skip the rule
+ 
+The rules of a group are applied top to bottom, so the last matching rule wins.
 """
-
-import re
-from typing import Dict, Optional
-from pyspark.sql import DataFrame, SparkSession
+ 
 from pyspark.sql import functions as F
-
-_SAS_OPERATOR_MAP = {
-    r"\bne\b": "!=",
-    r"\beq\b": "=",
-    r"\bgt\b": ">",
-    r"\blt\b": "<",
-    r"\bge\b": ">=",
-    r"\ble\b": "<=",
-}
-
-_MISSING_FN_PATTERN = re.compile(
-    r"missing\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)", re.IGNORECASE
-)
-
-_DOUBLE_QUOTED_STRING_PATTERN = re.compile(r'"([^"]*)"')
-
-
-def translate_sas_expression(expr: Optional[str]) -> Optional[str]:
-    """
-    Rewrites a SAS-flavoured condition/assignment string into valid Spark
-    SQL, so it can be safely passed to F.expr().
-
-    - missing(col)   -> (col IS NULL OR col = '')
-    - NE / EQ / GT / LT / GE / LE  -> != / = / > / < / >= / <=
-    - "text"         -> 'text'   (SAS double-quoted strings -> SQL single-quoted)
-    """
-    if expr is None:
-        return None
-    e = str(expr).strip()
-
-    # missing(col) -> null-or-empty check (do this before quote conversion,
-    # since it doesn't involve string literals itself)
-    e = _MISSING_FN_PATTERN.sub(r"(\1 IS NULL OR \1 = '')", e)
-
-    # word-style comparison operators
-    for pattern, replacement in _SAS_OPERATOR_MAP.items():
-        e = re.sub(pattern, replacement, e, flags=re.IGNORECASE)
-
-    # double-quoted string literals -> single-quoted, escaping any embedded '
-    e = _DOUBLE_QUOTED_STRING_PATTERN.sub(
-        lambda m: "'" + m.group(1).replace("'", "''") + "'", e
-    )
-
-    return e
-
-
-def parse_assignments(rule_text: Optional[str]) -> Dict[str, str]:
-    """
-    Splits a ';'-separated list of "column = expression" statements
-    (as stored in RULE_TO_APPLY / RULE_RETURN) into {column: expression},
-    translating each expression from SAS syntax to Spark SQL.
-
-    Example:
-        'STATUS="REJECTED"; FLAG=1'  ->  {"STATUS": "'REJECTED'", "FLAG": "1"}
-    """
-    assignments: Dict[str, str] = {}
-    if not rule_text:
-        return assignments
-    for stmt in str(rule_text).split(";"):
-        stmt = stmt.strip()
-        if not stmt or "=" not in stmt:
-            continue
-        col_name, expr_str = stmt.split("=", 1)
-        assignments[col_name.strip()] = translate_sas_expression(expr_str.strip())
-    return assignments
-
-
-
-def _build_if_then_assignments(row) -> Dict[str, str]:
-    """
-    Builds the {column: expression} assignment dict for a single
-    RULE_TYPE='IF_THEN' row, based on its SHOCK_TYPE - mirrors the
-    SHOCK_TYPE branch in the SAS data _null_ step that writes Apply_BR.
-    """
-    shock_type = (row["SHOCK_TYPE"] or "NONE").strip().upper()
-    rule_variable = row["RULE_VARIABLE"]
-
-    if shock_type == "NONE":
-        return parse_assignments(row["RULE_TO_APPLY"])
-
+ 
+ 
+def shocked_value(rule):
+    """Build the Spark SQL expression for the new value of RULE_VARIABLE."""
+ 
+    shock_type = str(rule["SHOCK_TYPE"]).strip().upper()
+    column = str(rule["RULE_VARIABLE"]).strip()
+    shock_num = str(rule["SHOCK_VARIABLE_NUM"]).strip()
+ 
+    if shock_type in ("", "NONE", "NAN"):
+        return str(rule["RULE_TO_APPLY"]).strip()
+ 
     if shock_type == "REPLACE_CHAR":
-        # RULE_VARIABLE = SHOCK_VARIABLE_CHAR
-        value = translate_sas_expression(row["SHOCK_VARIABLE_CHAR"])
-        return {rule_variable: value}
-
+        return str(rule["SHOCK_VARIABLE_CHAR"]).strip()
+ 
     if shock_type == "REPLACE_NUM":
-        # RULE_VARIABLE = SHOCK_VARIABLE_NUM
-        value = translate_sas_expression(str(row["SHOCK_VARIABLE_NUM"]))
-        return {rule_variable: value}
-
+        return shock_num
+ 
     if shock_type == "ADD":
-        # RULE_VARIABLE = RULE_VARIABLE + SHOCK_VARIABLE_NUM
-        shock_num = row["SHOCK_VARIABLE_NUM"]
-        return {rule_variable: f"{rule_variable} + {shock_num}"}
-
+        return "%s + %s" % (column, shock_num)
+ 
     if shock_type == "MULT":
-        # RULE_VARIABLE = (1 + SHOCK_VARIABLE_NUM) * RULE_VARIABLE
-        shock_num = row["SHOCK_VARIABLE_NUM"]
-        return {rule_variable: f"(1 + {shock_num}) * {rule_variable}"}
-
+        return "(1 + %s) * %s" % (shock_num, column)
+ 
     raise ValueError(
-        f"Unknown SHOCK_TYPE '{row['SHOCK_TYPE']}' for RULE_ID '{row['RULE_ID']}'. "
-        "Expected one of NONE, REPLACE_CHAR, REPLACE_NUM, ADD, MULT."
+        "Unknown SHOCK_TYPE '%s' for RULE_ID '%s'. Expected REPLACE_CHAR, "
+        "REPLACE_NUM, ADD, MULT or NONE." % (rule["SHOCK_TYPE"], rule["RULE_ID"])
     )
-
-
-def apply_initial_shocks(
-    spark: SparkSession,
-    in_impacted_df: DataFrame,
-    in_rule_df: DataFrame,
-    in_rule_group: str,
-    out_table_name: Optional[str] = None,
-) -> DataFrame:
-    """
-    Apply DELETE / IF_THEN (with SHOCK_TYPE) / IF_THEN_ELSE shock rules to
-    a DataFrame.
-
-    Parameters
-    ----------
-    spark : SparkSession
-    in_impacted_df : DataFrame
-        Equivalent of &In_Impacted_Dataset.
-    in_rule_df : DataFrame
-        Equivalent of &In_Rule_Dataset. Must contain: RULE_ID, RULE_GROUP,
-        RULE_TYPE, RULE_DATA_SELECTION, RULE_TO_APPLY, RULE_RETURN,
-        SHOCK_TYPE, RULE_VARIABLE, SHOCK_VARIABLE_CHAR, SHOCK_VARIABLE_NUM.
-    in_rule_group : str
-        Equivalent of &In_Rule_Group. Rules are filtered to this group
-        (case-insensitive, trimmed).
-    out_table_name : str, optional
-        If given, the result is written with saveAsTable (equivalent of
-        &Out_Ouput_Dataset).
-
-    Returns
-    -------
-    DataFrame with all shock rules for the given group applied.
-    """
-
-    # ---- 1. Filter rule table to the requested group ----
-    rules_df = in_rule_df.filter(
+ 
+ 
+def apply_initial_shocks(in_impacted_df,
+                         in_rule_df,
+                         in_rule_group,
+                         out_table_name=None):
+    """Apply all shock rules of one rule group to a DataFrame."""
+ 
+    rules = in_rule_df.filter(
         F.upper(F.trim(F.col("RULE_GROUP"))) == in_rule_group.strip().upper()
-    )
-    rules = rules_df.collect()  # rule tables are small metadata -> safe to collect
-
-    working_df = in_impacted_df
-    exception_views: Dict[str, DataFrame] = {}
-
-    # ---- 2. DELETE rules: capture exceptions, then remove matched rows ----
-    for row in rules:
-        rule_type = (row["RULE_TYPE"] or "").upper()
-        if rule_type != "DELETE":
+    ).collect()
+ 
+    if not rules:
+        raise ValueError("No shock rules found for rule group '%s'" % in_rule_group)
+ 
+    df = in_impacted_df
+ 
+    for rule in rules:
+        if str(rule["ACTIVE"]).strip().upper() == "N":
             continue
-
-        rule_id = row["RULE_ID"]
-        condition = translate_sas_expression(row["RULE_DATA_SELECTION"])
-        exc_name = f"CTX_EXC_{rule_id}"
-
-        exception_df = working_df.filter(F.expr(condition))
-        exception_views[exc_name] = exception_df
-        exception_df.createOrReplaceTempView(exc_name)
-
-        # equivalent of "if (condition) then delete;"
-        working_df = working_df.filter(~F.expr(condition))
-
-    # ---- 3. IF_THEN (shock-aware) / IF_THEN_ELSE rules ----
-    for row in rules:
-        rule_type = (row["RULE_TYPE"] or "").upper()
-        condition = translate_sas_expression(row["RULE_DATA_SELECTION"])
-
-        if rule_type == "IF_THEN":
-            assignments = _build_if_then_assignments(row)
-            for col_name, expr_str in assignments.items():
-                existing = (
-                    F.col(col_name) if col_name in working_df.columns else F.lit(None)
-                )
-                working_df = working_df.withColumn(
-                    col_name,
-                    F.when(F.expr(condition), F.expr(expr_str)).otherwise(existing),
-                )
-
-        elif rule_type == "IF_THEN_ELSE":
-            then_assignments = parse_assignments(row["RULE_TO_APPLY"])
-            else_assignments = parse_assignments(row["RULE_RETURN"])
-            all_cols = set(then_assignments) | set(else_assignments)
-
-            for col_name in all_cols:
-                then_expr = then_assignments.get(col_name)
-                else_expr = else_assignments.get(col_name)
-                existing = (
-                    F.col(col_name) if col_name in working_df.columns else F.lit(None)
-                )
-                then_col = F.expr(then_expr) if then_expr else existing
-                else_col = F.expr(else_expr) if else_expr else existing
-
-                working_df = working_df.withColumn(
-                    col_name, F.when(F.expr(condition), then_col).otherwise(else_col)
-                )
-
-    # # ---- 4. Persist output (equivalent of the final data &Out_Ouput_Dataset step) ----
-    # if out_table_name:
-    #     working_df.write.mode("overwrite").saveAsTable(out_table_name)
-
-    return working_df
-
-/*  usage */
-
-shock_groups = [
-    "Rule_If_Then",
-    "Rule_If_Then_Else",
-    "Rule_Delete",
-]
-
-for group in shock_groups:
-    AssetDBEntry_Conso_enriched = apply_initial_shocks(
-        spark=spark,
-        in_impacted_df=AssetDBEntry_Conso_enriched,
-        in_rule_df=Shock_Assets,
-        in_rule_group=group,
-    )
-
-AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")  
-
-
-
-    
+ 
+        condition = str(rule["RULE_DATA_SELECTION"]).strip()
+ 
+        if str(rule["RULE_TYPE"]).strip().upper() == "DELETE":
+            df = df.filter("not (%s)" % condition)
+            continue
+ 
+        column = str(rule["RULE_VARIABLE"]).strip()
+        new_value = shocked_value(rule)
+ 
+        if column in df.columns:
+            # the column already exists - keep its type, only change the value
+            df = df.withColumn(
+                column,
+                F.when(F.expr(condition), F.expr(new_value)).otherwise(F.col(column))
+            )
+        else:
+            if str(rule["SHOCK_TYPE"]).strip().upper() == "REPLACE_CHAR":
+                column_type = "string"
+            else:
+                column_type = "double"
+ 
+            df = df.withColumn(
+                column,
+                F.when(F.expr(condition), F.expr(new_value))
+                 .otherwise(F.lit(None)).cast(column_type)
+            )
+ 
+    if out_table_name:
+        df.write.mode("overwrite").saveAsTable(out_table_name)
+ 
+    return df
+ 
+ 
+# ---------------------------------------------------------------------------
+# Example usage in a Synapse notebook
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    from pyspark.sql import SparkSession
+ 
+    spark = SparkSession.builder.getOrCreate()
+ 
+    # Shock_Assets for the assets only mode, Shock_Assets_Liabilities for A&L
+    Shock_Assets = spark.table("dbo.Shock_Assets")
+    AssetDBEntry_Conso_enriched = spark.table("dbo.AssetDBEntry_Conso_enriched")
+ 
+    shock_groups = [
+        "Rule_If_Then",
+    ]
+ 
+    for group in shock_groups:
+        AssetDBEntry_Conso_enriched = apply_initial_shocks(
+            in_impacted_df=AssetDBEntry_Conso_enriched,
+            in_rule_df=Shock_Assets,
+            in_rule_group=group,
+        )
+ 
+    AssetDBEntry_Conso_enriched.createOrReplaceTempView("AssetDBEntry_Conso_enriched")
+ 
